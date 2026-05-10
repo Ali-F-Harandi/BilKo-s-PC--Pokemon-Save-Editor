@@ -28,6 +28,8 @@ export function destroyEditorTools() {
         clearTimeout(_searchDebounceTimer);
         _searchDebounceTimer = null;
     }
+    // Reset search filter to prevent stale state across re-initialization
+    _searchFilter = '';
 }
 
 /**
@@ -121,8 +123,8 @@ function _render(container, eventBus, theme, appState) {
                 _searchFilter = e.target.value.trim();
                 // Re-emit event to trigger content area re-render with filter applied
                 eventBus.emit(Events.EDITOR_DATA_CHANGED);
-                // Also re-render the tools bar to show/hide the clear button
-                _render(container, eventBus, theme, appState);
+                // Update clear button visibility without full re-render (preserves focus)
+                _updateClearButton(container, eventBus);
             }, 250);
         });
     }
@@ -130,8 +132,10 @@ function _render(container, eventBus, theme, appState) {
     // Clear search button
     document.getElementById('editor-search-clear')?.addEventListener('click', () => {
         _searchFilter = '';
+        const si = document.getElementById('editor-search-input');
+        if (si) si.value = '';
         eventBus.emit(Events.EDITOR_DATA_CHANGED);
-        _render(container, eventBus, theme, appState);
+        _updateClearButton(container, eventBus);
     });
 
     // Move mode toggle
@@ -145,4 +149,33 @@ function _render(container, eventBus, theme, appState) {
     });
 
     if (window.lucide) window.lucide.createIcons();
+}
+
+/**
+ * Update clear button visibility without full re-render.
+ * This preserves search input focus and cursor position.
+ * @private
+ */
+function _updateClearButton(container, eventBus) {
+    const searchWrap = container.querySelector('.relative.flex-grow');
+    if (!searchWrap) return;
+    const existingClear = document.getElementById('editor-search-clear');
+    if (_searchFilter && !existingClear) {
+        // Add clear button
+        const clearBtn = document.createElement('button');
+        clearBtn.id = 'editor-search-clear';
+        clearBtn.className = 'absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors';
+        clearBtn.innerHTML = '<i data-lucide="x" class="w-4 h-4"></i>';
+        clearBtn.addEventListener('click', () => {
+            _searchFilter = '';
+            const si = document.getElementById('editor-search-input');
+            if (si) si.value = '';
+            if (eventBus) eventBus.emit(Events.EDITOR_DATA_CHANGED);
+            _updateClearButton(container, eventBus);
+        });
+        searchWrap.appendChild(clearBtn);
+        if (window.lucide) window.lucide.createIcons();
+    } else if (!_searchFilter && existingClear) {
+        existingClear.remove();
+    }
 }

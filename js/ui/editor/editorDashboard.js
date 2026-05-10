@@ -71,6 +71,22 @@ let _unsubs = [];
 export function destroyEditorDashboard() {
     _unsubs.forEach(fn => fn());
     _unsubs = [];
+    // Reset module-level state to prevent stale data across re-initialization
+    _localState = {
+        trainerEditing: false,
+        trainerForm: {},
+        selectedBox: 0,
+        itemView: 'bag',
+        itemSortBy: 'id',
+        pokedexSortBy: 'id',
+        pokedexOwned: null,
+        pokedexSeen: null,
+        eventFlags: null,
+        battleMode: 'defense',
+        battleType: 'Normal',
+        encounterSearch: '',
+        pokedexSearch: '',
+    };
 }
 
 // ================================================================
@@ -437,7 +453,7 @@ function _renderTrainerDisplayFields(trainer, isYellow, data) {
         <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">Name</span><span class="font-bold text-gray-900 dark:text-white">${trainer.name || '—'}</span></div>
         <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">Rival</span><span class="font-bold text-gray-900 dark:text-white">${trainer.rivalName || '—'}</span></div>
         <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">Money</span><span class="font-bold text-green-600 dark:text-green-400">¥${(trainer.money || 0).toLocaleString()}</span></div>
-        <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">Casino Coins</span><span class="font-bold text-yellow-600 dark:text-yellow-400">${(trainer.casinoCoins || 0).toLocaleString()}</span></div>
+        <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">Casino Coins</span><span class="font-bold text-yellow-600 dark:text-yellow-400">${(trainer.coins || 0).toLocaleString()}</span></div>
         <div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">Play Time</span><span class="font-mono text-gray-900 dark:text-white">${trainer.playTime || '0:00'}</span></div>`;
     if (isYellow && trainer.pikachuFriendship !== undefined) {
         html += `<div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">Pikachu Friendship</span><span class="font-bold text-yellow-600 dark:text-yellow-400">${trainer.pikachuFriendship}</span></div>`;
@@ -453,7 +469,7 @@ function _renderTrainerEditFields(form, trainer, isYellow) {
             <div><label class="text-[10px] text-gray-500">Rival Name</label><input id="edit-rival" class="${inputCls}" value="${form.rivalName ?? trainer.rivalName ?? ''}"></div>
             <div><label class="text-[10px] text-gray-500">Trainer ID</label><input id="edit-id" type="number" class="${inputCls}" value="${form.id ?? trainer.id ?? 0}"></div>
             <div><label class="text-[10px] text-gray-500">Money</label><input id="edit-money" type="number" class="${inputCls}" value="${form.money ?? trainer.money ?? 0}"></div>
-            <div><label class="text-[10px] text-gray-500">Casino Coins</label><input id="edit-coins" type="number" class="${inputCls}" value="${form.casinoCoins ?? trainer.casinoCoins ?? 0}"></div>
+            <div><label class="text-[10px] text-gray-500">Casino Coins</label><input id="edit-coins" type="number" class="${inputCls}" value="${form.coins ?? trainer.coins ?? 0}"></div>
             <div><label class="text-[10px] text-gray-500">Play Time</label><input id="edit-playtime" class="${inputCls}" value="${form.playTime ?? trainer.playTime ?? '0:00'}"></div>
             ${isYellow ? `<div><label class="text-[10px] text-gray-500">Pikachu Friendship</label><input id="edit-pikachu" type="number" min="0" max="255" class="${inputCls}" value="${form.pikachuFriendship ?? trainer.pikachuFriendship ?? 0}"></div>` : ''}
         </div>`;
@@ -989,7 +1005,7 @@ function _bindContentEvents(container, eventBus, theme, appState) {
                 rivalName: rivalEl?.value || form.rivalName,
                 id: idEl?.value ? Number(idEl.value) : form.id,
                 money: moneyEl?.value ? Number(moneyEl.value) : form.money,
-                casinoCoins: coinsEl?.value ? Number(coinsEl.value) : form.casinoCoins,
+                coins: coinsEl?.value ? Number(coinsEl.value) : form.coins,
                 playTime: playTime,
                 badges: badgesByte,
             };

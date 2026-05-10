@@ -54,7 +54,10 @@ export class BinaryWriter {
 
   /** Write Binary Coded Decimal */
   bcd(value, length) {
-    let temp = value;
+    // Clamp value to maximum representable BCD for the given length
+    // 3 bytes = max 999999, 2 bytes = max 9999
+    const maxBcd = Math.pow(10, length * 2) - 1;
+    let temp = Math.max(0, Math.min(Math.floor(value), maxBcd));
     const start = this._offset;
     for (let i = length - 1; i >= 0; i--) {
       const lower = temp % 10;

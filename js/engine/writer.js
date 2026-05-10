@@ -238,7 +238,8 @@ export function writeGen1Save(save) {
 
   // 6. Trainer ID
   writer.seek(GEN1_OFFSETS.PLAYER_ID);
-  writer.u16be(parseInt(save.trainer.id));
+  const trainerId = parseInt(save.trainer.id);
+  writer.u16be(isNaN(trainerId) ? 0 : Math.max(0, Math.min(65535, trainerId)));
 
   // 7. PC Items
   writer.seek(GEN1_OFFSETS.PC_ITEMS);

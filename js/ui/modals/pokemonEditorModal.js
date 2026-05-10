@@ -14,6 +14,8 @@ import { getPokemonTypes } from '../../data/pokemonTypes.js';
 import { GEN1_BASE_STATS, GEN1_CATCH_RATES } from '../../data/baseStats.js';
 import { getGrowthRate, getLevelFromExp, getExpAtLevel } from '../../data/experience.js';
 import { TYPE_COLORS } from '../../data/gameData.js';
+import { GEN1_INTERNAL_TO_DEX } from '../../data/offsets.js';
+import { GEN1_TYPE_ID_MAP } from '../../data/pokemonTypes.js';
 import { POKEDEX_ENTRIES } from '../../data/pokedexEntries.js';
 import { calculateGen1Stat } from '../../engine/statCalculator.js';
 import { createPk1Binary } from '../../engine/writer.js';
@@ -82,6 +84,13 @@ function denormalizeForWriter(mon) {
   // Sync OT ID
   if (mon.otId !== undefined) {
     denormed.originalTrainerId = mon.otId;
+  }
+
+  // Sync species-related fields that the writer needs
+  // The writer uses dexId -> DEX_TO_INTERNAL lookup, so ensure dexId is current
+  // Also ensure speciesName is up to date for display
+  if (mon.dexId) {
+    denormed.speciesName = POKEMON_NAMES[mon.dexId] || mon.speciesName || '';
   }
 
   // Sync moves: editor format {id, pp, ppUps}[] → parser format
@@ -304,10 +313,25 @@ function render(container, eventBus, theme, appState) {
   setupAutoComplete('pe-species', POKEMON_NAMES, (idx) => {
     if (idx > 0 && idx <= 151) {
       localMon.dexId = idx;
+      // Update species name
+      localMon.speciesName = POKEMON_NAMES[idx] || '';
+      // Update internal species ID (reverse lookup from dex ID)
+      const internalIdx = GEN1_INTERNAL_TO_DEX.indexOf(idx);
+      if (internalIdx >= 0) localMon.speciesId = internalIdx;
+      // Update types
+      const types = getPokemonTypes(idx);
+      localMon.type1Name = types[0] || 'Normal';
+      localMon.type2Name = types[1] || types[0] || 'Normal';
+      localMon.type1 = GEN1_TYPE_ID_MAP[localMon.type1Name] ?? 0;
+      localMon.type2 = GEN1_TYPE_ID_MAP[localMon.type2Name] ?? 0;
       // Recalculate stats with new species base stats immediately
       calcAllStats(localMon);
       // Also reset catch rate to the new species default
       localMon.catchRate = GEN1_CATCH_RATES[idx] ?? localMon.catchRate;
+      // Update nickname if it matched the old species name
+      if (!localMon.isNicknamed && localMon.nickname) {
+        localMon.nickname = localMon.speciesName;
+      }
       refreshAll(container, eventBus, theme, appState); markDirty(container, eventBus);
     }
   }, container);
