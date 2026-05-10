@@ -9,7 +9,7 @@
 
 import { Events } from '../../state/eventBus.js';
 import { POKEMON_NAMES } from '../../data/pokemonNames.js';
-import { MOVES_LIST, MOVES_PP } from '../../data/moves.js';
+import { MOVES_LIST, MOVES_PP, getMoveName } from '../../data/moves.js';
 import { getPokemonTypes } from '../../data/pokemonTypes.js';
 import { GEN1_BASE_STATS, GEN1_CATCH_RATES } from '../../data/baseStats.js';
 import { getGrowthRate, getLevelFromExp, getExpAtLevel } from '../../data/experience.js';
@@ -24,9 +24,80 @@ const STAT_LABELS = { hp: 'HP', attack: 'Atk', defense: 'Def', speed: 'Spe', spe
 
 let localMon = null, isDirty = false, editorMeta = null;
 
+/**
+ * Normalize a Pokemon object from parser format to editor format.
+ * The parser stores:
+ *   - originalTrainerName / originalTrainerId (editor uses otName / otId)
+ *   - moves: string[], moveIds: number[], movePp: number[], movePpUps: number[]
+ * The editor expects:
+ *   - otName / otId
+ *   - moves: {id, pp, ppUps}[]
+ */
+function normalizeForEditor(mon) {
+  const normalized = { ...mon };
+
+  // OT Name: parser uses originalTrainerName
+  if (!normalized.otName && normalized.originalTrainerName) {
+    normalized.otName = normalized.originalTrainerName;
+  }
+
+  // OT ID: parser uses originalTrainerId
+  if (!normalized.otId && normalized.originalTrainerId) {
+    normalized.otId = normalized.originalTrainerId;
+  }
+
+  // Moves: parser has separate arrays (moveIds, movePp, movePpUps, moves as strings)
+  // Editor expects moves = [{id, pp, ppUps}, ...]
+  if (normalized.moveIds && Array.isArray(normalized.moveIds)) {
+    normalized.moves = normalized.moveIds.map((id, i) => ({
+      id: id || 0,
+      pp: (normalized.movePp && normalized.movePp[i]) || 0,
+      ppUps: (normalized.movePpUps && normalized.movePpUps[i]) || 0
+    }));
+  } else if (!normalized.moves || !normalized.moves.length || typeof normalized.moves[0] === 'string') {
+    // Fallback: ensure moves is an array of objects
+    normalized.moves = [0,1,2,3].map(i => {
+      const existing = normalized.moves?.[i];
+      if (existing && typeof existing === 'object') return existing;
+      return { id: 0, pp: 0, ppUps: 0 };
+    });
+  }
+
+  return normalized;
+}
+
+/**
+ * Denormalize a Pokemon object from editor format back to parser/writer format.
+ * Ensures originalTrainerName, originalTrainerId, moveIds, movePp, movePpUps
+ * are all set correctly for the writer.
+ */
+function denormalizeForWriter(mon) {
+  const denormed = { ...mon };
+
+  // Sync OT Name
+  if (mon.otName !== undefined) {
+    denormed.originalTrainerName = mon.otName;
+  }
+
+  // Sync OT ID
+  if (mon.otId !== undefined) {
+    denormed.originalTrainerId = mon.otId;
+  }
+
+  // Sync moves: editor format {id, pp, ppUps}[] → parser format
+  if (mon.moves && Array.isArray(mon.moves) && typeof mon.moves[0] === 'object') {
+    denormed.moveIds = mon.moves.map(m => m.id || 0);
+    denormed.movePp = mon.moves.map(m => m.pp || 0);
+    denormed.movePpUps = mon.moves.map(m => m.ppUps || 0);
+    denormed.moves = mon.moves.map(m => getMoveName(m.id || 0)); // string names for display
+  }
+
+  return denormed;
+}
+
 export function initPokemonEditorModal(container, eventBus, theme, appState) {
   eventBus.on(Events.OPEN_POKEMON_EDITOR, (payload) => {
-    localMon = JSON.parse(JSON.stringify(payload.mon));
+    localMon = normalizeForEditor(JSON.parse(JSON.stringify(payload.mon)));
     editorMeta = { source: payload.source, index: payload.index, boxIndex: payload.boxIndex };
     isDirty = false;
     render(container, eventBus, theme, appState);
@@ -42,7 +113,8 @@ function calcAllStats(mon) {
   const bs = GEN1_BASE_STATS[mon.dexId] || { hp:50, atk:50, def:50, spe:50, spc:50 };
   const lv = mon.level || 1;
   mon.maxHp = calculateGen1Stat(bs.hp, mon.iv.hp, mon.ev.hp, lv, true);
-  mon.hp = mon.maxHp;
+  // Only reset HP to maxHp if HP is 0 or exceeds maxHp (e.g. species change)
+  if (!mon.hp || mon.hp > mon.maxHp) mon.hp = mon.maxHp;
   mon.attack = calculateGen1Stat(bs.atk, mon.iv.attack, mon.ev.attack, lv, false);
   mon.defense = calculateGen1Stat(bs.def, mon.iv.defense, mon.ev.defense, lv, false);
   mon.speed = calculateGen1Stat(bs.spe, mon.iv.speed, mon.ev.speed, lv, false);
@@ -315,7 +387,9 @@ function render(container, eventBus, theme, appState) {
 
   // --- Buttons ---
   const doSave = () => {
-    const payload = { ...localMon, _source: editorMeta.source, _index: editorMeta.index, _boxIndex: editorMeta.boxIndex };
+    // Denormalize back to parser/writer format before saving
+    const denormedMon = denormalizeForWriter(localMon);
+    const payload = { ...denormedMon, _source: editorMeta.source, _index: editorMeta.index, _boxIndex: editorMeta.boxIndex };
     eventBus.emit(Events.POKEMON_UPDATED, payload);
     eventBus.emit(Events.CLOSE_POKEMON_EDITOR);
   };
@@ -330,7 +404,8 @@ function render(container, eventBus, theme, appState) {
   // Export .pk1
   document.getElementById('pe-export')?.addEventListener('click', () => {
     try {
-      const data = createPk1Binary(localMon);
+      const denormedMon = denormalizeForWriter(localMon);
+      const data = createPk1Binary(denormedMon);
       const blob = new Blob([data], { type: 'application/octet-stream' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
       a.download = `${localMon.nickname || POKEMON_NAMES[localMon.dexId] || 'pokemon'}.pk1`;
