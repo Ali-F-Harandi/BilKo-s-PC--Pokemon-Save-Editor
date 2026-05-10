@@ -12,3 +12,4 @@ export { CanonicalPokemon, CanonicalSaveFile } from './CanonicalModel.js';
 export { BaseAdapter } from './BaseAdapter.js';
 export { GenerationRegistry } from './GenerationRegistry.js';
 export { AdapterFactory } from './AdapterFactory.js';
+export { SaveManager } from './SaveManager.js';

@@ -10,6 +10,7 @@
  */
 
 import { Gen1Adapter } from '../generations/gen1/Gen1Adapter.js';
+import { Gen2Adapter } from '../generations/gen2/Gen2Adapter.js';
 
 export class GenerationRegistry {
     constructor() {
@@ -21,6 +22,7 @@ export class GenerationRegistry {
 
         // Register built-in adapters
         this.register(Gen1Adapter);
+        this.register(Gen2Adapter);
     }
 
     /**

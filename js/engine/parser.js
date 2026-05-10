@@ -486,6 +486,21 @@ export function parsePk1(buffer) {
 
 // --- Main Parser Entry ---
 
+// Gen 2 checksum validation (added in Phase 3)
+function validateGen2Checksum1(view) {
+  let sum = 0;
+  const start = 0x2009;
+  const end = 0x2D0C;
+  for (let i = start; i <= end; i++) {
+    sum += view[i];
+  }
+  const complement = ((~sum) & 0xFFFF) >>> 0;
+  const storedLow = view[0x2D0D];
+  const storedHigh = view[0x2D0E];
+  const stored = ((storedHigh << 8) | storedLow) >>> 0;
+  return complement === stored;
+}
+
 export const detectAndParseSave = async (file) => {
   try {
     const arrayBuffer = await file.arrayBuffer();
@@ -495,17 +510,32 @@ export const detectAndParseSave = async (file) => {
 
     console.log(`[Parser] Analyzing: ${filename} (${size} bytes)`);
 
-    // --- GEN 1 Only (32KB) ---
-    // Strict size check for Gen 1 (32768 bytes, sometimes with 16 byte header)
+    // --- 32KB save files (Gen 1 or Gen 2) ---
     if (size === 32768 || size === 32768 + 16) {
-      // Validate Checksum to ensure it's actually Gen 1 and not Gen 2 (which is also 32KB)
-      // or a corrupted file.
+      // Try Gen 2 first — both Gen 1 and Gen 2 are 32KB, but different checksum algorithms
+      if (size === 32768) {
+        const isGen2Valid = validateGen2Checksum1(view);
+        if (isGen2Valid) {
+          // This is a Gen 2 save — defer to Gen2Adapter via SaveManager
+          console.log(`[Parser] Detected Gen 2 checksum. Routing to Gen2Adapter.`);
+          // Return a marker so AppState knows to use SaveManager for Gen 2
+          return {
+            success: true,
+            data: null,
+            _requiresGen2Adapter: true,
+            _rawData: view,
+            _filename: filename
+          };
+        }
+      }
+
+      // Try Gen 1 checksum
       const isValid = validateGen1Checksum(view);
 
       if (!isValid) {
         return {
           success: false,
-          error: "Invalid Checksum! This does not look like a valid Gen 1 (Red/Blue/Yellow) save file."
+          error: "Invalid Checksum! This does not look like a valid Gen 1 (Red/Blue/Yellow) or Gen 2 (Gold/Silver/Crystal) save file."
         };
       }
 
@@ -515,7 +545,7 @@ export const detectAndParseSave = async (file) => {
     // Default error for any other file size
     return {
       success: false,
-      error: `Unsupported File Format.\n\nBilKo's PC only accepts Generation 1 Save Files (32KB .sav).\n\nDetected Size: ${size} bytes.`
+      error: `Unsupported File Format.\n\nBilKo's PC accepts Generation 1 (Red/Blue/Yellow) and Generation 2 (Gold/Silver/Crystal) Save Files (32KB .sav).\n\nDetected Size: ${size} bytes.`
     };
 
   } catch (err) {

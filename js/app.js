@@ -32,7 +32,9 @@ import { EditorState } from './state/editorState.js';
 // ---- Phase 1: Multi-Generation Architecture ----
 import { GenerationRegistry } from './core/GenerationRegistry.js';
 import { AdapterFactory } from './core/AdapterFactory.js';
+import { SaveManager } from './core/SaveManager.js';
 import { Gen1Adapter } from './generations/gen1/Gen1Adapter.js';
+import { Gen2Adapter } from './generations/gen2/Gen2Adapter.js';
 import { UIRegistry } from './ui/components/UIRegistry.js';
 import { initHeader, destroyHeader } from './ui/layout/header.js';
 import { initFooter } from './ui/layout/footer.js';
@@ -61,25 +63,43 @@ import { registerExtension as registerInfoExtension } from './ui/panels/PokemonI
 import { registerExtension as registerStatsExtension } from './ui/panels/PokemonStatsPanel.js';
 import { registerExtension as registerMovesExtension } from './ui/panels/PokemonMovesPanel.js';
 
+// ---- Phase 3: Gen2 UI Extensions ----
+import { HeldItemSection } from './generations/gen2/uiExtensions/HeldItemSection.js';
+import { ShinyFlagSection } from './generations/gen2/uiExtensions/ShinyFlagSection.js';
+import { GenderSection } from './generations/gen2/uiExtensions/GenderSection.js';
+import { SplitSpecialSection } from './generations/gen2/uiExtensions/SplitSpecialSection.js';
+
 // ---- Global Instances ----
 export const eventBus = new EventBus();
 export const theme = new ThemeManager(eventBus);
 export const appState = new AppState(eventBus, theme);
 export const editorState = new EditorState(eventBus, appState);
 
-// ---- Phase 1: Adapter Architecture Instances ----
+// ---- Phase 1+3: Adapter Architecture Instances ----
 export const generationRegistry = new GenerationRegistry();
 export const adapterFactory = new AdapterFactory(generationRegistry);
 export const uiRegistry = new UIRegistry();
+export const saveManager = new SaveManager(adapterFactory);
 
-// Convenience: Get the Gen 1 adapter (the only one registered in Phase 1)
+// Convenience: Get adapters for each registered generation
 export const gen1Adapter = adapterFactory.createForGeneration(1);
+export const gen2Adapter = adapterFactory.createForGeneration(2);
 
 // ---- Phase 2: Register Gen1 UI Extensions ----
 const catchRateExt = new CatchRateSection();
 const specialStatExt = new SpecialStatSection();
 registerMovesExtension(catchRateExt);
 registerStatsExtension(specialStatExt);
+
+// ---- Phase 3: Register Gen2 UI Extensions ----
+const heldItemExt = new HeldItemSection();
+const shinyExt = new ShinyFlagSection();
+const genderExt = new GenderSection();
+const splitSpecialExt = new SplitSpecialSection();
+registerMovesExtension(heldItemExt);
+registerInfoExtension(shinyExt);
+registerInfoExtension(genderExt);
+registerStatsExtension(splitSpecialExt);
 
 // ---- Enable debug logging if ?debug param is present ----
 if (typeof URLSearchParams !== 'undefined') {
@@ -143,7 +163,7 @@ function buildAppShell() {
         <div id="pokemon-editor-modal-container"></div>
 
         <!-- Hidden File Input for Global Open -->
-        <input type="file" id="global-file-input" accept=".sav,.srm" multiple class="hidden">
+        <input type="file" id="global-file-input" accept=".sav,.srm,.pk1,.pk2" multiple class="hidden">
 
         <!-- App Wrapper -->
         <div id="app-wrapper" class="flex flex-col min-h-screen relative bg-gray-50 dark:bg-gray-950 transition-colors duration-300 overflow-hidden font-sans">
@@ -377,7 +397,7 @@ function renderTabBar() {
         <div class="bg-gray-200 dark:bg-gray-900 pt-2 px-2 flex items-end gap-1 overflow-x-auto border-b border-gray-300 dark:border-gray-800 z-10 relative scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 no-scrollbar">
             ${tabs.map((tab, i) => {
                 const isActive = tab.id === activeTabId;
-                const versionColor = tab.version === 'Red' ? 'bg-red-500' : tab.version === 'Blue' ? 'bg-blue-500' : 'bg-yellow-400';
+                const versionColor = tab.version === 'Red' ? 'bg-red-500' : tab.version === 'Blue' ? 'bg-blue-500' : tab.version === 'Yellow' ? 'bg-yellow-400' : tab.version === 'Gold' ? 'bg-amber-500' : tab.version === 'Silver' ? 'bg-slate-400' : tab.version === 'Crystal' ? 'bg-cyan-400' : 'bg-gray-400';
                 return `
                     <div class="tab-item group relative pl-4 pr-8 py-2 min-w-[160px] max-w-[240px] shrink-0 rounded-t-lg cursor-pointer select-none transition-all duration-200 no-select
                         ${isActive
@@ -623,13 +643,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Log architecture info
-    console.log('[BilKo\'s PC] Gen 1 Save Editor initialized.');
-    console.log(`[BilKo\'s PC] Phase 1 Re-Architecture: Adapter Factory online.`);
+    console.log('[BilKo\'s PC] Multi-Generation Save Editor initialized.');
+    console.log(`[BilKo\'s PC] Phase 3: Adapter Factory + SaveManager online.`);
     console.log(`[BilKo\'s PC] Registered generations: [${generationRegistry.getRegisteredGenerations().join(', ')}]`);
     console.log(`[BilKo\'s PC] Registered games: [${generationRegistry.getRegisteredGames().join(', ')}]`);
     console.log(`[BilKo\'s PC] Gen1Adapter available: ${gen1Adapter !== null}`);
+    console.log(`[BilKo\'s PC] Gen2Adapter available: ${gen2Adapter !== null}`);
     if (gen1Adapter) {
         const schema = gen1Adapter.getPokemonSchema();
         console.log(`[BilKo\'s PC] Gen1 Pokemon Schema: ${schema.sections.length} sections, ${schema.sections.reduce((t, s) => t + s.fields.length, 0)} fields`);
+    }
+    if (gen2Adapter) {
+        const schema = gen2Adapter.getPokemonSchema();
+        console.log(`[BilKo\'s PC] Gen2 Pokemon Schema: ${schema.sections.length} sections, ${schema.sections.reduce((t, s) => t + s.fields.length, 0)} fields`);
     }
 });

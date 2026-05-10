@@ -20,8 +20,16 @@
 import { Events } from './eventBus.js';
 import { detectAndParseSave } from '../engine/parser.js';
 import { writeGen1Save } from '../engine/writer.js';
+import { Gen2Adapter } from '../generations/gen2/Gen2Adapter.js';
 import { transferPokemonBatch, movePokemonBatch, isSameLocation } from '../engine/manipulation.js';
 import { sortPCBoxes } from '../engine/sortManager.js';
+
+// Lazy Gen2 adapter instance for Gen 2 save writing
+let _gen2Adapter = null;
+function getGen2Adapter() {
+    if (!_gen2Adapter) _gen2Adapter = new Gen2Adapter();
+    return _gen2Adapter;
+}
 
 /**
  * @typedef {'home'|'storage'|'pokedex'|'battle'|'events'|'hof'|'encounters'} DashboardTab
@@ -382,7 +390,31 @@ export class AppState {
         try {
             const result = await detectAndParseSave(currentFile);
 
-            if (result.success && result.data) {
+            // Check if this is a Gen 2 save (detected by parser)
+            if (result.success && result._requiresGen2Adapter) {
+                // Use Gen2Adapter to parse the save
+                const adapter = getGen2Adapter();
+                const gen2Result = await adapter.parseSaveFile(result._rawData, result._filename);
+                if (gen2Result.success && gen2Result.data) {
+                    const data = gen2Result.data;
+                    const versionStr = data.gameVersion || 'Gold';
+                    // Gen 2 games are unambiguous — create tab immediately
+                    this.createNewTab(data, versionStr);
+                    this._fileQueue = this._fileQueue.slice(1);
+                    this._eventBus.emit(Events.FILE_QUEUE_UPDATED, {
+                        queue: this._fileQueue,
+                        isProcessing: this._isProcessingQueue
+                    });
+                } else {
+                    this._errorMessage = `Failed to parse Gen 2 save "${currentFile.name}".\n\nReason: ${gen2Result.error || 'Unknown error'}`;
+                    this._eventBus.emit(Events.OPEN_ERROR_MODAL, this._errorMessage);
+                    this._fileQueue = this._fileQueue.slice(1);
+                    this._eventBus.emit(Events.FILE_QUEUE_UPDATED, {
+                        queue: this._fileQueue,
+                        isProcessing: this._isProcessingQueue
+                    });
+                }
+            } else if (result.success && result.data) {
                 const data = result.data;
                 const versionStr = data.gameVersion || 'Red';
 
@@ -487,7 +519,17 @@ export class AppState {
         }
 
         try {
-            const newBytes = writeGen1Save(tab.data);
+            // Determine generation from save data and use appropriate writer
+            let newBytes;
+            const generationId = tab.data?.generationId || tab.data?.generation || 1;
+            if (generationId === 2) {
+                // Use Gen2Adapter for writing
+                const adapter = getGen2Adapter();
+                newBytes = adapter.writeSaveFile(tab.data);
+            } else {
+                // Use Gen1 writer for backward compatibility
+                newBytes = writeGen1Save(tab.data);
+            }
             const blob = new Blob([newBytes], { type: "application/octet-stream" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
