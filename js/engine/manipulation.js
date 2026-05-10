@@ -62,8 +62,8 @@ export function movePokemonBatch(
 ) {
   // Capacity check: ensure target container won't exceed its limit
   const maxCapacity = target.type === 'party' ? 6 : 20;
-  const targetList = target.type === 'party' ? data.party : data.pcBoxes[target.boxIndex];
-  const currentOccupied = targetList.filter(m => m !== null && m !== undefined).length;
+  const originalTargetList = target.type === 'party' ? data.party : data.pcBoxes[target.boxIndex];
+  const currentOccupied = originalTargetList.filter(m => m !== null && m !== undefined).length;
   // In same-container reorders, sources are removed first so capacity is preserved
   // But we still check for cross-type moves via this function being called incorrectly
   const isSameContainer = sources.every(s =>
