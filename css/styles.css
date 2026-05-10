@@ -1,0 +1,864 @@
+/* ============================================================
+   BilKo's PC — Gen 1 Save Editor
+   Custom Styles (ported from original index.html <style> block)
+
+   Phase 5: Layout & Navigation additions:
+   - Global file drop zone overlay
+   - View transition animations
+   - Move mode cursor and visual cues
+   - Enhanced retro monitor CRT effects
+   - Better responsive utilities
+   - Keyboard shortcut hints
+   - Polished tab bar animations
+   ============================================================ */
+
+/* ---- Hidden scrollbar utility ---- */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ---- Hardware acceleration hack class ---- */
+.gpu-accelerated {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
+  transform: translateZ(0);
+}
+
+/* ---- Hide Number Input Spinners Globally ---- */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* ---- 3D Flip Utilities ---- */
+.perspective-1000 {
+  perspective: 1000px;
+}
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* ==============================================================
+   ANIMATIONS
+   ============================================================== */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes zoomIn95 {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes slideInFromTop {
+  from { opacity: 0; transform: translateY(-1rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInFromRight {
+  from { opacity: 0; transform: translateX(100%); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideInFromBottom {
+  from { opacity: 0; transform: translateY(1rem); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+@keyframes bounce {
+  0%, 100% { transform: translateY(-5%); animation-timing-function: cubic-bezier(0.8,0,1,1); }
+  50% { transform: translateY(0); animation-timing-function: cubic-bezier(0,0,0.2,1); }
+}
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 5px rgba(59,130,246,0.3); }
+  50% { box-shadow: 0 0 20px rgba(59,130,246,0.6), 0 0 40px rgba(59,130,246,0.2); }
+}
+@keyframes slideTabIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes viewFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 200ms ease-out both;
+}
+.animate-fade-out {
+  animation: fadeOut 150ms ease-in both;
+}
+.animate-zoom-in-95 {
+  animation: zoomIn95 200ms ease-out both;
+}
+.animate-slide-from-top {
+  animation: slideInFromTop 200ms ease-out both;
+}
+.animate-slide-from-right {
+  animation: slideInFromRight 300ms ease-out both;
+}
+.animate-slide-from-bottom {
+  animation: slideInFromBottom 200ms ease-out both;
+}
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+.animate-bounce {
+  animation: bounce 3s ease-in-out infinite;
+}
+.animate-glow-pulse {
+  animation: glowPulse 2s ease-in-out infinite;
+}
+.animate-view-fade-in {
+  animation: viewFadeIn 300ms ease-out both;
+}
+
+/* Duration helpers */
+.duration-200 { animation-duration: 200ms; }
+.duration-300 { animation-duration: 300ms; }
+
+/* ---- Pixelated sprites ---- */
+.pixelated {
+  image-rendering: pixelated;
+}
+
+/* ==============================================================
+   GLOBAL FILE DROP ZONE OVERLAY
+   Full-screen overlay shown when dragging files over the page.
+   ============================================================== */
+
+.global-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.global-drop-content {
+  text-align: center;
+  color: white;
+  padding: 3rem;
+  border: 3px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 1.5rem;
+  max-width: 400px;
+  transition: border-color 200ms ease, background-color 200ms ease;
+}
+
+.global-drop-overlay:hover .global-drop-content,
+.global-drop-overlay.drag-active .global-drop-content {
+  border-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.global-drop-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 1.5rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #93c5fd;
+  transition: transform 200ms ease, background 200ms ease;
+}
+
+.global-drop-overlay:hover .global-drop-icon,
+.global-drop-overlay.drag-active .global-drop-icon {
+  transform: scale(1.1);
+  background: rgba(59, 130, 246, 0.3);
+}
+
+/* ==============================================================
+   VIEW TRANSITIONS
+   Smooth transition when switching between Home and Editor views.
+   ============================================================== */
+
+.view-transition {
+  animation: viewFadeIn 300ms ease-out both;
+}
+
+/* ==============================================================
+   MOVE MODE
+   Visual cues when move mode is active.
+   ============================================================== */
+
+body.move-mode-active {
+  cursor: crosshair;
+}
+body.move-mode-active .pokemon-slot {
+  cursor: grab;
+}
+body.move-mode-active .pokemon-slot:active {
+  cursor: grabbing;
+}
+body.move-mode-active .pokemon-slot.selected {
+  outline: 3px solid #3b82f6;
+  outline-offset: -1px;
+  box-shadow: 0 0 0 2px rgba(59,130,246,0.3);
+}
+body.move-mode-active .pokemon-slot.selected::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 2px dashed #3b82f6;
+  border-radius: inherit;
+  animation: pulse 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+body.move-mode-active .pokemon-slot:hover {
+  outline: 2px solid #60a5fa;
+  outline-offset: -1px;
+}
+
+/* ==============================================================
+   RETRO PC MONITOR (DropZone / LoadSaveModal)
+   Full CRT monitor effect with scanlines, glare, power LED.
+   ============================================================== */
+
+.retro-monitor {
+  background: linear-gradient(145deg, #2a2a3e 0%, #1a1a2e 50%, #151525 100%);
+  border-radius: 1.5rem;
+  border: 4px solid #333;
+  position: relative;
+  box-shadow:
+    inset 0 0 30px rgba(0,0,0,0.5),
+    0 8px 32px rgba(0,0,0,0.3),
+    0 0 0 1px rgba(255,255,255,0.05);
+  overflow: hidden;
+}
+
+/* Monitor bezel inner shadow */
+.retro-monitor::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 0.75rem;
+  border: 2px solid rgba(255,255,255,0.03);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.retro-screen {
+  background: #0f380f;
+  border-radius: 0.5rem;
+  color: #9bbc0f;
+  font-family: monospace;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Scanline effect */
+.retro-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.15) 2px,
+    rgba(0,0,0,0.15) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Screen glare */
+.retro-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0.08) 0%,
+    transparent 40%,
+    transparent 60%,
+    rgba(255,255,255,0.03) 100%
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Power LED indicator */
+.retro-monitor .power-led {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444, 0 0 12px rgba(239,68,68,0.5);
+  animation: pulse 3s ease-in-out infinite;
+}
+
+/* Monitor stand */
+.retro-monitor-stand {
+  width: 40%;
+  height: 16px;
+  margin: 0 auto;
+  background: linear-gradient(to bottom, #333, #222);
+  border-radius: 0 0 4px 4px;
+}
+
+/* Monitor base */
+.retro-monitor-base {
+  width: 60%;
+  height: 8px;
+  margin: 0 auto;
+  background: linear-gradient(to bottom, #222, #1a1a1a);
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* Drag-over state for retro monitor */
+.retro-monitor.drag-over .retro-screen {
+  background: #0f2848;
+  box-shadow: 0 0 20px rgba(59,130,246,0.3);
+}
+.retro-monitor.drag-over {
+  border-color: #3b82f6;
+  box-shadow:
+    inset 0 0 30px rgba(0,0,0,0.5),
+    0 8px 32px rgba(0,0,0,0.3),
+    0 0 0 2px rgba(59,130,246,0.5);
+}
+
+/* ==============================================================
+   AUTOCOMPLETE DROPDOWN
+   ============================================================== */
+
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  max-height: 200px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+}
+.dark .autocomplete-dropdown {
+  background: #1f2937;
+  border-color: #374151;
+}
+.autocomplete-item {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+.autocomplete-item:hover,
+.autocomplete-item.active {
+  background: #f3f4f6;
+}
+.dark .autocomplete-item:hover,
+.dark .autocomplete-item.active {
+  background: #374151;
+}
+
+/* ==============================================================
+   CUSTOM SCROLLBAR
+   ============================================================== */
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+  border-radius: 3px;
+}
+.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+/* ==============================================================
+   STAT BARS
+   ============================================================== */
+
+.stat-bar-bg {
+  background: #e5e7eb;
+  border-radius: 9999px;
+  height: 8px;
+}
+.dark .stat-bar-bg {
+  background: #374151;
+}
+.stat-bar-fill {
+  border-radius: 9999px;
+  height: 8px;
+  transition: width 300ms ease;
+}
+
+/* ==============================================================
+   RADAR CHART
+   ============================================================== */
+
+.radar-chart {
+  position: relative;
+  width: 200px;
+  height: 200px;
+}
+
+/* ==============================================================
+   TYPE BADGE COLORS
+   ============================================================== */
+
+.type-normal  { background-color: #A8A878; }
+.type-fire    { background-color: #F08030; }
+.type-water   { background-color: #6890F0; }
+.type-electric{ background-color: #F8D030; }
+.type-grass   { background-color: #78C850; }
+.type-ice     { background-color: #98D8D8; }
+.type-fighting{ background-color: #C03028; }
+.type-poison  { background-color: #A040A0; }
+.type-ground  { background-color: #E0C068; }
+.type-flying  { background-color: #A890F0; }
+.type-psychic { background-color: #F85888; }
+.type-bug     { background-color: #A8B820; }
+.type-rock    { background-color: #B8A038; }
+.type-ghost   { background-color: #705898; }
+.type-dragon  { background-color: #7038F8; }
+.type-steel   { background-color: #B8B8D0; }
+.type-???     { background-color: #68A090; }
+
+/* ==============================================================
+   DRAG & DROP HIGHLIGHTS
+   ============================================================== */
+
+.drag-over {
+  outline: 2px dashed #3b82f6;
+  outline-offset: -2px;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+/* ==============================================================
+   POKÉMON SLOT CARD
+   ============================================================== */
+
+.pokemon-slot {
+  transition: transform 150ms ease, box-shadow 150ms ease;
+  position: relative;
+}
+.pokemon-slot:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.pokemon-slot.selected {
+  outline: 3px solid #3b82f6;
+  outline-offset: -1px;
+}
+
+/* ==============================================================
+   MODAL OVERLAY
+   ============================================================== */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ==============================================================
+   TOAST NOTIFICATION
+   ============================================================== */
+
+.toast-notification {
+  position: fixed;
+  top: 5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: #111827;
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 9999px;
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  pointer-events: none;
+  transition: opacity 300ms ease, transform 300ms ease;
+}
+
+.toast-notification.toast-exiting {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-0.5rem);
+}
+
+/* ==============================================================
+   DOTTED BACKGROUND
+   ============================================================== */
+
+.dotted-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.dark .dotted-bg {
+  opacity: 0.15;
+}
+
+/* ==============================================================
+   BADGE GRID
+   ============================================================== */
+
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+/* ==============================================================
+   RESPONSIVE SIDEBAR DRAWER
+   ============================================================== */
+
+@media (max-width: 639px) {
+  .sidebar-drawer {
+    width: 100%;
+  }
+}
+@media (min-width: 640px) {
+  .sidebar-drawer {
+    width: 20rem;
+  }
+}
+@media (min-width: 768px) {
+  .sidebar-drawer {
+    width: 22rem;
+  }
+}
+
+/* ==============================================================
+   ENCOUNTER CARD
+   ============================================================== */
+
+.encounter-card {
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.encounter-card:hover {
+  transform: translateY(-2px);
+}
+
+/* ==============================================================
+   POKEDEX GRID
+   ============================================================== */
+
+.pokedex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 0.5rem;
+}
+@media (min-width: 768px) {
+  .pokedex-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+}
+
+/* ==============================================================
+   BOX GRID
+   ============================================================== */
+
+.box-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+}
+
+/* ==============================================================
+   PC BOX LIST VIEW
+   ============================================================== */
+
+.box-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* (Transition utilities now provided by Tailwind CSS: transition-colors, transition-all, transition-transform) */
+
+/* ==============================================================
+   KEYBOARD SHORTCUT HINTS
+   Small pill badges shown next to buttons for keyboard shortcuts.
+   ============================================================== */
+
+.kbd-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  font-size: 0.625rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  line-height: 1;
+  color: #9ca3af;
+  background: rgba(0,0,0,0.08);
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 0.25rem;
+  white-space: nowrap;
+}
+.dark .kbd-hint {
+  color: #6b7280;
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.1);
+}
+
+/* ==============================================================
+   TAB BAR ENHANCEMENTS
+   Smoother tab transitions and hover effects.
+   ============================================================== */
+
+.tab-item {
+  animation: slideTabIn 200ms ease-out both;
+}
+.tab-item:hover .tab-close-btn {
+  opacity: 1;
+}
+.tab-item .tab-close-btn {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.tab-item.tab-active .tab-close-btn {
+  opacity: 1;
+}
+
+/* Active tab version stripe animation */
+.tab-stripe {
+  transition: background-color 300ms ease;
+}
+
+/* ==============================================================
+   RESPONSIVE LAYOUT HELPERS
+   ============================================================== */
+
+/* Hide on mobile, show on desktop */
+@media (max-width: 639px) {
+  .hide-mobile { display: none !important; }
+}
+/* Show on mobile, hide on desktop */
+@media (min-width: 640px) {
+  .show-mobile-only { display: none !important; }
+}
+
+/* Prevent text selection on interactive elements */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Touch-friendly minimum tap target (44x44px per WCAG) */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* ==============================================================
+   PRINT STYLES
+   Hide unnecessary UI when printing.
+   ============================================================== */
+
+@media print {
+  .global-drop-overlay,
+  .modal-overlay,
+  .toast-notification,
+  #move-mode-fab-container,
+  #tab-bar-container,
+  #app-header,
+  .scroll-top-btn,
+  .selection-badge,
+  .processing-overlay {
+    display: none !important;
+  }
+}
+
+/* (Line clamp utilities now provided by Tailwind CSS: line-clamp-2, line-clamp-3) */
+
+/* ==============================================================
+   LOADING SPINNER
+   ============================================================== */
+
+.loading-spinner {
+  border: 3px solid rgba(0,0,0,0.1);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 0.6s linear infinite;
+}
+.dark .loading-spinner {
+  border-color: rgba(255,255,255,0.1);
+  border-top-color: #60a5fa;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ==============================================================
+   SCROLL-TO-TOP BUTTON
+   ============================================================== */
+
+.scroll-top-btn {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 1.5rem;
+  z-index: 800;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: white;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: opacity 200ms, transform 200ms;
+  opacity: 0;
+  transform: translateY(1rem);
+  pointer-events: none;
+}
+.dark .scroll-top-btn {
+  background: #1f2937;
+  color: #d1d5db;
+  border-color: #374151;
+}
+.scroll-top-btn.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.scroll-top-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+}
+
+/* ==============================================================
+   FILE PROCESSING OVERLAY
+   ============================================================== */
+
+.processing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.processing-card {
+  background: white;
+  border-radius: 1rem;
+  padding: 2rem;
+  box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+  text-align: center;
+  max-width: 300px;
+}
+.dark .processing-card {
+  background: #1f2937;
+}
+
+/* ==============================================================
+   SELECTION COUNT BADGE (MOVE MODE)
+   ============================================================== */
+
+.selection-badge {
+  position: fixed;
+  bottom: 5.5rem;
+  right: 1.5rem;
+  z-index: 899;
+  background: #111827;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  pointer-events: none;
+}
+
+/* ==============================================================
+   FOCUS RING (ACCESSIBILITY)
+   ============================================================== */
+
+.focus-ring:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* ==============================================================
+   DISABLED BUTTON STATE
+   ============================================================== */
+
+.btn-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ==============================================================
+   REDUCED MOTION (ACCESSIBILITY)
+   ============================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
