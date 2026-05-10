@@ -1,14 +1,19 @@
 /**
  * errorModal.js — Error Display Modal
- * 
+ *
  * Ported from ErrorModal in App.tsx
+ *
+ * FIX: Dismiss button now emits CLOSE_ERROR_MODAL event via EventBus
+ * instead of just clearing the container. This ensures AppState.dismissError()
+ * is called (via global handler in app.js), which clears _errorMessage
+ * and allows the file queue to resume processing.
  */
 
 import { EventBus, Events } from '../../state/eventBus.js';
 
 export function initErrorModal(container, eventBus, appState) {
     eventBus.on(Events.OPEN_ERROR_MODAL, (message) => {
-        _render(container, message);
+        _render(container, message, eventBus);
     });
 
     eventBus.on(Events.CLOSE_ERROR_MODAL, () => {
@@ -16,7 +21,7 @@ export function initErrorModal(container, eventBus, appState) {
     });
 }
 
-function _render(container, message) {
+function _render(container, message, eventBus) {
     container.innerHTML = `
         <div class="modal-overlay animate-fade-in z-[600]">
             <div class="bg-white dark:bg-gray-900 w-full max-w-sm rounded-2xl shadow-2xl border border-red-200 dark:border-red-900/50 animate-zoom-in-95 overflow-hidden">
@@ -35,7 +40,9 @@ function _render(container, message) {
     `;
 
     document.getElementById('error-dismiss-btn')?.addEventListener('click', () => {
-        container.innerHTML = '';
+        // Emit event so AppState.dismissError() is called via global handler in app.js
+        // This clears _errorMessage and resumes file queue processing
+        eventBus.emit(Events.CLOSE_ERROR_MODAL);
     });
 
     if (window.lucide) window.lucide.createIcons();

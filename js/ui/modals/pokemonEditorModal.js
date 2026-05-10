@@ -1,6 +1,10 @@
 /**
  * pokemonEditorModal.js — Full Pokémon Editor Modal
  * Vanilla JS port of PokemonEditorModal.tsx
+ *
+ * FIX: All hardcoded dark-theme classes replaced with theme-aware
+ * light/dark variants using Tailwind's `dark:` prefix strategy.
+ * The modal now correctly adapts to the app's light/dark mode.
  */
 
 import { Events } from '../../state/eventBus.js';
@@ -61,8 +65,8 @@ function filteredList(items, query) {
 function autoCompleteHTML(id, list, value, placeholder) {
   return `<div class="relative">
     <input id="${id}" type="text" value="${value}" placeholder="${placeholder}"
-      class="w-full px-2 py-1.5 bg-white/10 dark:bg-black/20 border border-white/20 rounded-lg text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/40" autocomplete="off">
-    <div id="${id}-dd" class="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-600 rounded-lg shadow-xl max-h-40 overflow-y-auto hidden"></div>
+      class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/10 border border-gray-300 dark:border-white/20 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/40" autocomplete="off">
+    <div id="${id}-dd" class="absolute z-50 w-full mt-1 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg shadow-xl max-h-40 overflow-y-auto hidden"></div>
   </div>`;
 }
 
@@ -72,7 +76,7 @@ function setupAutoComplete(inputId, items, onSelect, container) {
   inp.addEventListener('input', () => {
     const matches = filteredList(items, inp.value);
     if (!matches.length) { dd.classList.add('hidden'); return; }
-    dd.innerHTML = matches.map((m,i) => `<div class="px-3 py-1.5 text-sm text-white hover:bg-white/20 cursor-pointer" data-idx="${i}">${m}</div>`).join('');
+    dd.innerHTML = matches.map((m,i) => `<div class="px-3 py-1.5 text-sm text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-white/20 cursor-pointer" data-idx="${i}">${m}</div>`).join('');
     dd.classList.remove('hidden');
     dd.querySelectorAll('[data-idx]').forEach(el => el.addEventListener('click', () => {
       onSelect(items.indexOf(el.textContent)); inp.value = el.textContent; dd.classList.add('hidden');
@@ -92,8 +96,8 @@ function render(container, eventBus, theme, appState) {
   container.innerHTML = `
   <div class="fixed inset-0 z-[700] flex items-center justify-center p-2 sm:p-4 animate-fade-in">
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" id="pe-backdrop"></div>
-    <div class="relative w-full max-w-6xl bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-zoom-in-95 flex flex-col max-h-[95vh]">
-      <!-- HEADER -->
+    <div class="relative w-full max-w-6xl bg-white dark:bg-gray-900/95 border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-zoom-in-95 flex flex-col max-h-[95vh]">
+      <!-- HEADER (always uses game color background, so text stays white) -->
       <div class="flex flex-wrap items-center gap-2 px-4 py-3" style="background:${bgColor}">
         <input id="pe-nick" type="text" value="${localMon.nickname || POKEMON_NAMES[dexId] || ''}" maxlength="10"
           class="bg-transparent border-b-2 border-white/30 text-2xl lg:text-3xl font-black italic text-white focus:outline-none focus:border-white/60 w-36 placeholder-white/30" placeholder="Nickname">
@@ -120,94 +124,94 @@ function render(container, eventBus, theme, appState) {
               class="w-32 h-32 pixelated hover:scale-110 transition-transform cursor-pointer" onerror="this.style.display='none'">
           </div>
           <div>
-            <label class="text-xs text-gray-400 font-bold uppercase mb-1 block">Species</label>
+            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">Species</label>
             ${autoCompleteHTML('pe-species', POKEMON_NAMES, POKEMON_NAMES[dexId]||'', 'Search species...')}
           </div>
           <div id="pe-types" class="flex gap-2 flex-wrap">${typeBadges(dexId)}</div>
           <div>
-            <label class="text-xs text-gray-400 font-bold uppercase mb-1 block">OT Name</label>
+            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">OT Name</label>
             <input id="pe-ot" type="text" value="${localMon.otName||''}" maxlength="7"
-              class="w-full px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/30">
+              class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/30">
           </div>
           <div>
-            <label class="text-xs text-gray-400 font-bold uppercase mb-1 block">OT Trainer ID</label>
+            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">OT Trainer ID</label>
             <input id="pe-otid" type="number" min="0" max="65535" value="${localMon.otId||0}"
-              class="w-full px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
+              class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
           </div>
           <div>
-            <label class="text-xs text-gray-400 font-bold uppercase mb-1 block">Experience</label>
+            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">Experience</label>
             <input id="pe-exp" type="number" min="0" max="2700000" value="${localMon.exp||0}"
-              class="w-full px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
-            <p class="text-xs text-gray-500 mt-1">Growth: ${getGrowthRate(dexId)} · Lv from EXP: ${getLevelFromExp(localMon.exp||0, getGrowthRate(dexId))}</p>
+              class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Growth: ${getGrowthRate(dexId)} · Lv from EXP: ${getLevelFromExp(localMon.exp||0, getGrowthRate(dexId))}</p>
           </div>
           <div>
-            <label class="text-xs text-gray-400 font-bold uppercase mb-1 block">Pokérus</label>
+            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">Pokérus</label>
             <input id="pe-pokerus" type="number" min="0" max="255" value="${localMon.pokerus||0}"
-              class="w-full px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
+              class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
           </div>
         </div>
 
         <!-- MIDDLE: Stats -->
         <div class="lg:col-span-4 space-y-4">
-          <h3 class="text-sm font-black text-white uppercase tracking-wider border-b border-white/10 pb-2">IVs <span class="text-gray-500 font-normal">(0-15)</span></h3>
+          <h3 class="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider border-b border-gray-200 dark:border-white/10 pb-2">IVs <span class="text-gray-400 dark:text-gray-500 font-normal">(0-15)</span></h3>
           ${STAT_KEYS.map(k => `<div class="flex items-center gap-2">
-            <span class="w-12 text-xs text-gray-400 font-bold">${STAT_LABELS[k]}</span>
+            <span class="w-12 text-xs text-gray-500 dark:text-gray-400 font-bold">${STAT_LABELS[k]}</span>
             <input type="range" min="0" max="15" value="${localMon.iv[k]||0}" data-iv="${k}" class="pe-iv-range flex-1 accent-yellow-400 h-1.5">
             <input type="number" min="0" max="15" value="${localMon.iv[k]||0}" data-ivn="${k}"
-              class="w-12 px-1 py-0.5 bg-white/5 border border-white/10 rounded text-xs text-white text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
+              class="w-12 px-1 py-0.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
           </div>`).join('')}
 
-          <h3 class="text-sm font-black text-white uppercase tracking-wider border-b border-white/10 pb-2 pt-2">EVs <span class="text-gray-500 font-normal">(0-65535)</span></h3>
+          <h3 class="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider border-b border-gray-200 dark:border-white/10 pb-2 pt-2">EVs <span class="text-gray-400 dark:text-gray-500 font-normal">(0-65535)</span></h3>
           ${STAT_KEYS.map(k => `<div class="flex items-center gap-2">
-            <span class="w-12 text-xs text-gray-400 font-bold">${STAT_LABELS[k]}</span>
+            <span class="w-12 text-xs text-gray-500 dark:text-gray-400 font-bold">${STAT_LABELS[k]}</span>
             <input type="range" min="0" max="65535" value="${localMon.ev[k]||0}" data-ev="${k}" class="pe-ev-range flex-1 accent-green-400 h-1.5">
             <input type="number" min="0" max="65535" value="${localMon.ev[k]||0}" data-evn="${k}"
-              class="w-16 px-1 py-0.5 bg-white/5 border border-white/10 rounded text-xs text-white text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
+              class="w-16 px-1 py-0.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
           </div>`).join('')}
 
-          <h3 class="text-sm font-black text-white uppercase tracking-wider border-b border-white/10 pb-2 pt-2">Calculated Stats</h3>
+          <h3 class="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider border-b border-gray-200 dark:border-white/10 pb-2 pt-2">Calculated Stats</h3>
           <div class="grid grid-cols-3 gap-2 text-center">
             ${[['HP',stats.hp,bs.hp],['Atk',stats.atk,bs.atk],['Def',stats.def,bs.def],['Spe',stats.spe,bs.spe],['SpA',stats.spAtk,bs.spc],['SpD',stats.spDef,bs.spc]].map(([l,v,b])=>
-              `<div class="bg-white/5 rounded-lg p-2"><div class="text-lg font-black text-white">${v}</div><div class="text-xs text-gray-500">${l} <span class="text-gray-600">(${b})</span></div></div>`
+              `<div class="bg-gray-100 dark:bg-white/5 rounded-lg p-2"><div class="text-lg font-black text-gray-900 dark:text-white">${v}</div><div class="text-xs text-gray-400 dark:text-gray-500">${l} <span class="text-gray-300 dark:text-gray-600">(${b})</span></div></div>`
             ).join('')}
           </div>
-          <p class="text-xs text-gray-600 text-center">Base stats in parentheses</p>
+          <p class="text-xs text-gray-400 dark:text-gray-600 text-center">Base stats in parentheses</p>
         </div>
 
         <!-- RIGHT: Moves -->
         <div class="lg:col-span-4 space-y-4">
-          <h3 class="text-sm font-black text-white uppercase tracking-wider border-b border-white/10 pb-2">Moves</h3>
+          <h3 class="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider border-b border-gray-200 dark:border-white/10 pb-2">Moves</h3>
           ${[0,1,2,3].map(i => {
             const m = localMon.moves?.[i] || { id:0, pp:0, ppUps:0 };
             const basePP = MOVES_PP[m.id] || 0;
             const maxPP = basePP + Math.floor(basePP * (m.ppUps||0) / 5);
-            return `<div class="bg-white/5 rounded-xl p-3 space-y-2">
+            return `<div class="bg-gray-100 dark:bg-white/5 rounded-xl p-3 space-y-2">
               <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-500 font-bold w-5">#${i+1}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500 font-bold w-5">#${i+1}</span>
                 ${autoCompleteHTML(`pe-move-${i}`, MOVES_LIST, MOVES_LIST[m.id]||'-', 'Move...')}
               </div>
               <div class="flex items-center gap-3 text-xs">
-                <span class="text-gray-400">PP: <span class="text-white font-bold" id="pe-pp-${i}">${m.pp||0}</span>/${maxPP}</span>
-                <label class="text-gray-400">PP Ups:
+                <span class="text-gray-500 dark:text-gray-400">PP: <span class="text-gray-900 dark:text-white font-bold" id="pe-pp-${i}">${m.pp||0}</span>/${maxPP}</span>
+                <label class="text-gray-500 dark:text-gray-400">PP Ups:
                   <input type="number" min="0" max="3" value="${m.ppUps||0}" data-ppups="${i}"
-                    class="w-10 px-1 py-0.5 bg-white/5 border border-white/10 rounded text-white text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
+                    class="w-10 px-1 py-0.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded text-gray-900 dark:text-white text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
                 </label>
               </div>
             </div>`;
           }).join('')}
 
-          <div class="bg-white/5 rounded-xl p-3 space-y-2 mt-4">
-            <label class="text-xs text-gray-400 font-bold uppercase">Catch Rate / Friendship</label>
+          <div class="bg-gray-100 dark:bg-white/5 rounded-xl p-3 space-y-2 mt-4">
+            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Catch Rate / Friendship</label>
             <input id="pe-catchrate" type="number" min="0" max="255" value="${localMon.catchRate ?? GEN1_CATCH_RATES[dexId] ?? 0}"
-              class="w-full px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
-            ${isYellow ? '<p class="text-xs text-yellow-400/70">Yellow: Pikachu friendship value</p>' : ''}
+              class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
+            ${isYellow ? '<p class="text-xs text-yellow-600 dark:text-yellow-400/70">Yellow: Pikachu friendship value</p>' : ''}
           </div>
         </div>
       </div>
 
       <!-- FOOTER -->
-      <div class="flex items-center justify-end gap-3 px-4 py-3 border-t border-white/10 bg-gray-950/50">
-        <button id="pe-cancel" class="px-4 py-2 text-sm font-bold text-gray-300 hover:text-white border border-white/10 rounded-lg hover:bg-white/5 transition-colors">Cancel</button>
+      <div class="flex items-center justify-end gap-3 px-4 py-3 border-t border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-950/50">
+        <button id="pe-cancel" class="px-4 py-2 text-sm font-bold text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-white/10 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">Cancel</button>
         <button id="pe-save2" class="px-6 py-2 text-sm font-black bg-white text-gray-900 rounded-lg hover:bg-gray-100 transition-colors shadow-lg">Save Changes</button>
       </div>
     </div>
@@ -215,9 +219,9 @@ function render(container, eventBus, theme, appState) {
   <!-- Dex entry popup (hidden) -->
   <div id="pe-dex-popup" class="fixed inset-0 z-[800] items-center justify-center hidden">
     <div class="absolute inset-0 bg-black/50" id="pe-dex-close"></div>
-    <div class="relative bg-gray-900 border border-white/10 rounded-2xl p-6 max-w-md mx-auto mt-24 shadow-2xl">
-      <h3 class="text-lg font-black text-white mb-2">#${dexId} ${POKEMON_NAMES[dexId]||''}</h3>
-      <p id="pe-dex-text" class="text-sm text-gray-300 leading-relaxed"></p>
+    <div class="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl p-6 max-w-md mx-auto mt-24 shadow-2xl">
+      <h3 class="text-lg font-black text-gray-900 dark:text-white mb-2">#${dexId} ${POKEMON_NAMES[dexId]||''}</h3>
+      <p id="pe-dex-text" class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed"></p>
     </div>
   </div>`;
 
@@ -355,7 +359,7 @@ function recalcAndRefresh(container, eventBus, theme, appState) {
     if (i < 6) {
       el.querySelector('.text-lg').textContent = vals[i];
       const label = el.querySelector('.text-xs');
-      if (label) label.innerHTML = `${labels[i]} <span class="text-gray-600">(${bases[i]})</span>`;
+      if (label) label.innerHTML = `${labels[i]} <span class="text-gray-300 dark:text-gray-600">(${bases[i]})</span>`;
     }
   });
   // Update level from exp display

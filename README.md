@@ -1,4 +1,4 @@
-# BilKo's PC — Pokemon Save Editor
+# BilKo's PC — Generation 1 Save Editor
 
 A fully client-side, browser-based save file editor for Pokémon Red, Blue, and Yellow (Generation 1). No server required — everything runs locally in your browser.
 
