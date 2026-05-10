@@ -54,6 +54,13 @@ import { initSortSettingsModal } from './ui/modals/sortSettingsModal.js';
 import { initPokemonEditorModal } from './ui/modals/pokemonEditorModal.js';
 import { initMoveModeFAB } from './ui/components/moveModeFAB.js';
 
+// ---- Phase 2: Gen1 UI Extensions ----
+import { CatchRateSection } from './generations/gen1/uiExtensions/CatchRateSection.js';
+import { SpecialStatSection } from './generations/gen1/uiExtensions/SpecialStatSection.js';
+import { registerExtension as registerInfoExtension } from './ui/panels/PokemonInfoPanel.js';
+import { registerExtension as registerStatsExtension } from './ui/panels/PokemonStatsPanel.js';
+import { registerExtension as registerMovesExtension } from './ui/panels/PokemonMovesPanel.js';
+
 // ---- Global Instances ----
 export const eventBus = new EventBus();
 export const theme = new ThemeManager(eventBus);
@@ -67,6 +74,12 @@ export const uiRegistry = new UIRegistry();
 
 // Convenience: Get the Gen 1 adapter (the only one registered in Phase 1)
 export const gen1Adapter = adapterFactory.createForGeneration(1);
+
+// ---- Phase 2: Register Gen1 UI Extensions ----
+const catchRateExt = new CatchRateSection();
+const specialStatExt = new SpecialStatSection();
+registerMovesExtension(catchRateExt);
+registerStatsExtension(specialStatExt);
 
 // ---- Enable debug logging if ?debug param is present ----
 if (typeof URLSearchParams !== 'undefined') {

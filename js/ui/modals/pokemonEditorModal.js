@@ -1,10 +1,9 @@
 /**
  * pokemonEditorModal.js — Full Pokémon Editor Modal
- * Vanilla JS port of PokemonEditorModal.tsx
  *
- * FIX: All hardcoded dark-theme classes replaced with theme-aware
- * light/dark variants using Tailwind's `dark:` prefix strategy.
- * The modal now correctly adapts to the app's light/dark mode.
+ * Phase 2: Composes from panel modules (PokemonInfoPanel, PokemonStatsPanel, PokemonMovesPanel).
+ * Keeps the modal shell (header, footer, backdrop), normalize/denormalize logic,
+ * autocomplete setup, and all input/button event bindings.
  */
 
 import { Events } from '../../state/eventBus.js';
@@ -20,6 +19,11 @@ import { POKEDEX_ENTRIES } from '../../data/pokedexEntries.js';
 import { calculateGen1Stat } from '../../engine/statCalculator.js';
 import { createPk1Binary } from '../../engine/writer.js';
 
+// Panel imports
+import * as PokemonInfoPanel from '../panels/PokemonInfoPanel.js';
+import * as PokemonStatsPanel from '../panels/PokemonStatsPanel.js';
+import * as PokemonMovesPanel from '../panels/PokemonMovesPanel.js';
+
 const GAME_COLORS = { red: '#FF3B3B', blue: '#3B4CCA', yellow: '#FFD733' };
 const STAT_KEYS = ['hp', 'attack', 'defense', 'speed', 'special'];
 const STAT_LABELS = { hp: 'HP', attack: 'Atk', defense: 'Def', speed: 'Spe', special: 'Spc' };
@@ -28,28 +32,18 @@ let localMon = null, isDirty = false, editorMeta = null;
 
 /**
  * Normalize a Pokemon object from parser format to editor format.
- * The parser stores:
- *   - originalTrainerName / originalTrainerId (editor uses otName / otId)
- *   - moves: string[], moveIds: number[], movePp: number[], movePpUps: number[]
- * The editor expects:
- *   - otName / otId
- *   - moves: {id, pp, ppUps}[]
  */
 function normalizeForEditor(mon) {
   const normalized = { ...mon };
 
-  // OT Name: parser uses originalTrainerName
   if (!normalized.otName && normalized.originalTrainerName) {
     normalized.otName = normalized.originalTrainerName;
   }
 
-  // OT ID: parser uses originalTrainerId
   if (!normalized.otId && normalized.originalTrainerId) {
     normalized.otId = normalized.originalTrainerId;
   }
 
-  // Moves: parser has separate arrays (moveIds, movePp, movePpUps, moves as strings)
-  // Editor expects moves = [{id, pp, ppUps}, ...]
   if (normalized.moveIds && Array.isArray(normalized.moveIds)) {
     normalized.moves = normalized.moveIds.map((id, i) => ({
       id: id || 0,
@@ -57,7 +51,6 @@ function normalizeForEditor(mon) {
       ppUps: (normalized.movePpUps && normalized.movePpUps[i]) || 0
     }));
   } else if (!normalized.moves || !normalized.moves.length || typeof normalized.moves[0] === 'string') {
-    // Fallback: ensure moves is an array of objects
     normalized.moves = [0,1,2,3].map(i => {
       const existing = normalized.moves?.[i];
       if (existing && typeof existing === 'object') return existing;
@@ -70,35 +63,27 @@ function normalizeForEditor(mon) {
 
 /**
  * Denormalize a Pokemon object from editor format back to parser/writer format.
- * Ensures originalTrainerName, originalTrainerId, moveIds, movePp, movePpUps
- * are all set correctly for the writer.
  */
 function denormalizeForWriter(mon) {
   const denormed = { ...mon };
 
-  // Sync OT Name
   if (mon.otName !== undefined) {
     denormed.originalTrainerName = mon.otName;
   }
 
-  // Sync OT ID
   if (mon.otId !== undefined) {
     denormed.originalTrainerId = mon.otId;
   }
 
-  // Sync species-related fields that the writer needs
-  // The writer uses dexId -> DEX_TO_INTERNAL lookup, so ensure dexId is current
-  // Also ensure speciesName is up to date for display
   if (mon.dexId) {
     denormed.speciesName = POKEMON_NAMES[mon.dexId] || mon.speciesName || '';
   }
 
-  // Sync moves: editor format {id, pp, ppUps}[] → parser format
   if (mon.moves && Array.isArray(mon.moves) && typeof mon.moves[0] === 'object') {
     denormed.moveIds = mon.moves.map(m => m.id || 0);
     denormed.movePp = mon.moves.map(m => m.pp || 0);
     denormed.movePpUps = mon.moves.map(m => m.ppUps || 0);
-    denormed.moves = mon.moves.map(m => getMoveName(m.id || 0)); // string names for display
+    denormed.moves = mon.moves.map(m => getMoveName(m.id || 0));
   }
 
   return denormed;
@@ -122,7 +107,6 @@ function calcAllStats(mon) {
   const bs = GEN1_BASE_STATS[mon.dexId] || { hp:50, atk:50, def:50, spe:50, spc:50 };
   const lv = mon.level || 1;
   mon.maxHp = calculateGen1Stat(bs.hp, mon.iv.hp, mon.ev.hp, lv, true);
-  // Only reset HP to maxHp if HP is 0 or exceeds maxHp (e.g. species change)
   if (!mon.hp || mon.hp > mon.maxHp) mon.hp = mon.maxHp;
   mon.attack = calculateGen1Stat(bs.atk, mon.iv.attack, mon.ev.attack, lv, false);
   mon.defense = calculateGen1Stat(bs.def, mon.iv.defense, mon.ev.defense, lv, false);
@@ -172,14 +156,17 @@ function render(container, eventBus, theme, appState) {
   const bgColor = gameTheme?.color || GAME_COLORS[editorMeta?.source === 'party' ? 'red' : 'blue'] || '#3B4CCA';
   const { bs, stats } = calcAllStats(localMon);
   const dexId = localMon.dexId || 0;
-  const spriteUrl = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${dexId}.png`;
   const isYellow = appState?.getActiveTab()?.version === 'Yellow';
+  const generation = 1; // Gen1 for now
+
+  // Inject _isYellow for extensions
+  localMon._isYellow = isYellow;
 
   container.innerHTML = `
   <div class="fixed inset-0 z-[700] flex items-center justify-center p-2 sm:p-4 animate-fade-in">
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" id="pe-backdrop"></div>
     <div class="relative w-full max-w-6xl bg-white dark:bg-gray-900/95 border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl overflow-hidden animate-zoom-in-95 flex flex-col max-h-[95vh]">
-      <!-- HEADER (always uses game color background, so text stays white) -->
+      <!-- HEADER -->
       <div class="flex flex-wrap items-center gap-2 px-4 py-3" style="background:${bgColor}">
         <input id="pe-nick" type="text" value="${localMon.nickname || POKEMON_NAMES[dexId] || ''}" maxlength="10"
           class="bg-transparent border-b-2 border-white/30 text-2xl lg:text-3xl font-black italic text-white focus:outline-none focus:border-white/60 w-36 placeholder-white/30" placeholder="Nickname">
@@ -198,97 +185,9 @@ function render(container, eventBus, theme, appState) {
 
       <!-- CONTENT -->
       <div class="overflow-y-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 flex-1">
-
-        <!-- LEFT: Identity -->
-        <div class="lg:col-span-4 space-y-4">
-          <div class="flex justify-center">
-            <img id="pe-sprite" src="${spriteUrl}" alt="${POKEMON_NAMES[dexId]||'Pokémon'}"
-              class="w-32 h-32 pixelated hover:scale-110 transition-transform cursor-pointer" onerror="this.style.display='none'">
-          </div>
-          <div>
-            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">Species</label>
-            ${autoCompleteHTML('pe-species', POKEMON_NAMES, POKEMON_NAMES[dexId]||'', 'Search species...')}
-          </div>
-          <div id="pe-types" class="flex gap-2 flex-wrap">${typeBadges(dexId)}</div>
-          <div>
-            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">OT Name</label>
-            <input id="pe-ot" type="text" value="${localMon.otName||''}" maxlength="7"
-              class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/30">
-          </div>
-          <div>
-            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">OT Trainer ID</label>
-            <input id="pe-otid" type="number" min="0" max="65535" value="${localMon.otId||0}"
-              class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
-          </div>
-          <div>
-            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">Experience</label>
-            <input id="pe-exp" type="number" min="0" max="2700000" value="${localMon.exp||0}"
-              class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Growth: ${getGrowthRate(dexId)} · Lv from EXP: ${getLevelFromExp(localMon.exp||0, getGrowthRate(dexId))}</p>
-          </div>
-          <div>
-            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">Pokérus</label>
-            <input id="pe-pokerus" type="number" min="0" max="255" value="${localMon.pokerus||0}"
-              class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
-          </div>
-        </div>
-
-        <!-- MIDDLE: Stats -->
-        <div class="lg:col-span-4 space-y-4">
-          <h3 class="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider border-b border-gray-200 dark:border-white/10 pb-2">IVs <span class="text-gray-400 dark:text-gray-500 font-normal">(0-15)</span></h3>
-          ${STAT_KEYS.map(k => `<div class="flex items-center gap-2">
-            <span class="w-12 text-xs text-gray-500 dark:text-gray-400 font-bold">${STAT_LABELS[k]}</span>
-            <input type="range" min="0" max="15" value="${localMon.iv[k]||0}" data-iv="${k}" class="pe-iv-range flex-1 accent-yellow-400 h-1.5">
-            <input type="number" min="0" max="15" value="${localMon.iv[k]||0}" data-ivn="${k}"
-              class="w-12 px-1 py-0.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
-          </div>`).join('')}
-
-          <h3 class="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider border-b border-gray-200 dark:border-white/10 pb-2 pt-2">EVs <span class="text-gray-400 dark:text-gray-500 font-normal">(0-65535)</span></h3>
-          ${STAT_KEYS.map(k => `<div class="flex items-center gap-2">
-            <span class="w-12 text-xs text-gray-500 dark:text-gray-400 font-bold">${STAT_LABELS[k]}</span>
-            <input type="range" min="0" max="65535" value="${localMon.ev[k]||0}" data-ev="${k}" class="pe-ev-range flex-1 accent-green-400 h-1.5">
-            <input type="number" min="0" max="65535" value="${localMon.ev[k]||0}" data-evn="${k}"
-              class="w-16 px-1 py-0.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded text-xs text-gray-900 dark:text-white text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
-          </div>`).join('')}
-
-          <h3 class="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider border-b border-gray-200 dark:border-white/10 pb-2 pt-2">Calculated Stats</h3>
-          <div class="grid grid-cols-3 gap-2 text-center">
-            ${[['HP',stats.hp,bs.hp],['Atk',stats.atk,bs.atk],['Def',stats.def,bs.def],['Spe',stats.spe,bs.spe],['SpA',stats.spAtk,bs.spc],['SpD',stats.spDef,bs.spc]].map(([l,v,b])=>
-              `<div class="bg-gray-100 dark:bg-white/5 rounded-lg p-2"><div class="text-lg font-black text-gray-900 dark:text-white">${v}</div><div class="text-xs text-gray-400 dark:text-gray-500">${l} <span class="text-gray-300 dark:text-gray-600">(${b})</span></div></div>`
-            ).join('')}
-          </div>
-          <p class="text-xs text-gray-400 dark:text-gray-600 text-center">Base stats in parentheses</p>
-        </div>
-
-        <!-- RIGHT: Moves -->
-        <div class="lg:col-span-4 space-y-4">
-          <h3 class="text-sm font-black text-gray-900 dark:text-white uppercase tracking-wider border-b border-gray-200 dark:border-white/10 pb-2">Moves</h3>
-          ${[0,1,2,3].map(i => {
-            const m = localMon.moves?.[i] || { id:0, pp:0, ppUps:0 };
-            const basePP = MOVES_PP[m.id] || 0;
-            const maxPP = basePP + Math.floor(basePP * (m.ppUps||0) / 5);
-            return `<div class="bg-gray-100 dark:bg-white/5 rounded-xl p-3 space-y-2">
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-400 dark:text-gray-500 font-bold w-5">#${i+1}</span>
-                ${autoCompleteHTML(`pe-move-${i}`, MOVES_LIST, MOVES_LIST[m.id]||'-', 'Move...')}
-              </div>
-              <div class="flex items-center gap-3 text-xs">
-                <span class="text-gray-500 dark:text-gray-400">PP: <span class="text-gray-900 dark:text-white font-bold" id="pe-pp-${i}">${m.pp||0}</span>/${maxPP}</span>
-                <label class="text-gray-500 dark:text-gray-400">PP Ups:
-                  <input type="number" min="0" max="3" value="${m.ppUps||0}" data-ppups="${i}"
-                    class="w-10 px-1 py-0.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded text-gray-900 dark:text-white text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
-                </label>
-              </div>
-            </div>`;
-          }).join('')}
-
-          <div class="bg-gray-100 dark:bg-white/5 rounded-xl p-3 space-y-2 mt-4">
-            <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Catch Rate / Friendship</label>
-            <input id="pe-catchrate" type="number" min="0" max="255" value="${localMon.catchRate ?? GEN1_CATCH_RATES[dexId] ?? 0}"
-              class="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-400 dark:focus:ring-white/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none">
-            ${isYellow ? '<p class="text-xs text-yellow-600 dark:text-yellow-400/70">Yellow: Pikachu friendship value</p>' : ''}
-          </div>
-        </div>
+        ${PokemonInfoPanel.render(localMon, appState, generation)}
+        ${PokemonStatsPanel.render(localMon, stats, bs, generation)}
+        ${PokemonMovesPanel.render(localMon, generation)}
       </div>
 
       <!-- FOOTER -->
@@ -313,22 +212,16 @@ function render(container, eventBus, theme, appState) {
   setupAutoComplete('pe-species', POKEMON_NAMES, (idx) => {
     if (idx > 0 && idx <= 151) {
       localMon.dexId = idx;
-      // Update species name
       localMon.speciesName = POKEMON_NAMES[idx] || '';
-      // Update internal species ID (reverse lookup from dex ID)
       const internalIdx = GEN1_INTERNAL_TO_DEX.indexOf(idx);
       if (internalIdx >= 0) localMon.speciesId = internalIdx;
-      // Update types
       const types = getPokemonTypes(idx);
       localMon.type1Name = types[0] || 'Normal';
       localMon.type2Name = types[1] || types[0] || 'Normal';
       localMon.type1 = GEN1_TYPE_ID_MAP[localMon.type1Name] ?? 0;
       localMon.type2 = GEN1_TYPE_ID_MAP[localMon.type2Name] ?? 0;
-      // Recalculate stats with new species base stats immediately
       calcAllStats(localMon);
-      // Also reset catch rate to the new species default
       localMon.catchRate = GEN1_CATCH_RATES[idx] ?? localMon.catchRate;
-      // Update nickname if it matched the old species name
       if (!localMon.isNicknamed && localMon.nickname) {
         localMon.nickname = localMon.speciesName;
       }
@@ -343,6 +236,11 @@ function render(container, eventBus, theme, appState) {
       refreshAll(container, eventBus, theme, appState); markDirty(container, eventBus);
     }, container);
   });
+
+  // --- Panel event bindings ---
+  PokemonInfoPanel.bindEvents(container, eventBus, appState, localMon, generation);
+  PokemonStatsPanel.bindEvents(container, eventBus, appState, localMon, generation);
+  PokemonMovesPanel.bindEvents(container, eventBus, appState, localMon, generation);
 
   // --- Input bindings ---
   const bind = (id, prop, parser = v => v) => {
@@ -411,7 +309,6 @@ function render(container, eventBus, theme, appState) {
 
   // --- Buttons ---
   const doSave = () => {
-    // Denormalize back to parser/writer format before saving
     const denormedMon = denormalizeForWriter(localMon);
     const payload = { ...denormedMon, _source: editorMeta.source, _index: editorMeta.index, _boxIndex: editorMeta.boxIndex };
     eventBus.emit(Events.POKEMON_UPDATED, payload);
@@ -458,7 +355,6 @@ function render(container, eventBus, theme, appState) {
 
 function recalcAndRefresh(container, eventBus, theme, appState) {
   calcAllStats(localMon);
-  // Update just the stats display
   const { bs, stats } = calcAllStats(localMon);
   const labels = ['HP','Atk','Def','Spe','SpA','SpD'];
   const vals = [stats.hp, stats.atk, stats.def, stats.spe, stats.spAtk, stats.spDef];
@@ -470,7 +366,6 @@ function recalcAndRefresh(container, eventBus, theme, appState) {
       if (label) label.innerHTML = `${labels[i]} <span class="text-gray-300 dark:text-gray-600">(${bases[i]})</span>`;
     }
   });
-  // Update level from exp display
   const levelInput = document.getElementById('pe-level');
   if (levelInput) levelInput.value = localMon.level;
 }
