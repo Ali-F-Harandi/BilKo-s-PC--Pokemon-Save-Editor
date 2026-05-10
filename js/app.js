@@ -380,7 +380,7 @@ function renderTabBar() {
     // Bind tab click events
     container.querySelectorAll('[data-tab-id]').forEach(el => {
         el.addEventListener('click', (e) => {
-            // Don't switch tab if clicking close button
+            // Don't switch tab if clicking close button (including its padding area)
             if (e.target.closest('.tab-close-btn')) return;
             const tabId = el.dataset.tabId;
             appState.switchToTab(tabId);
@@ -506,33 +506,22 @@ function setupKeyboardShortcuts() {
 
 /**
  * Set up the toast auto-dismiss behavior.
- * Listens for SHOW_TOAST and auto-hides after 3 seconds.
+ * NOTE: AppState.showToast() already manages a 3-second timer that emits
+ * SHOW_TOAST(null). We only need to handle the exit animation here.
  * @private
  */
 function setupToastAutoDismiss() {
-    let _toastTimer = null;
-
     eventBus.on(Events.SHOW_TOAST, (msg) => {
-        // Clear existing timer
-        if (_toastTimer) {
-            clearTimeout(_toastTimer);
-            _toastTimer = null;
-        }
-
-        // Auto-dismiss after 3 seconds (matching original React behavior)
-        if (msg) {
-            _toastTimer = setTimeout(() => {
-                // Add exit animation
-                const toastEl = document.querySelector('.toast-notification');
-                if (toastEl) {
-                    toastEl.classList.add('toast-exiting');
-                    setTimeout(() => {
-                        const container = document.getElementById('toast-container');
-                        if (container) container.innerHTML = '';
-                    }, 300);
-                }
-                _toastTimer = null;
-            }, 3000);
+        // When the toast is being cleared (msg is null), add exit animation
+        if (msg === null) {
+            const toastEl = document.querySelector('.toast-notification');
+            if (toastEl) {
+                toastEl.classList.add('toast-exiting');
+                setTimeout(() => {
+                    const container = document.getElementById('toast-container');
+                    if (container) container.innerHTML = '';
+                }, 300);
+            }
         }
     });
 }
@@ -553,6 +542,15 @@ document.addEventListener('DOMContentLoaded', () => {
     setupTabBar();
     setupKeyboardShortcuts();
     setupToastAutoDismiss();
+
+    // ---- Warn before unload if unsaved changes ----
+    window.addEventListener('beforeunload', (e) => {
+        const hasUnsaved = appState.getTabs().some(t => t.isDirty);
+        if (hasUnsaved) {
+            e.preventDefault();
+            e.returnValue = ''; // Required for Chrome
+        }
+    });
 
     // Initialize Lucide icons
     if (window.lucide) {

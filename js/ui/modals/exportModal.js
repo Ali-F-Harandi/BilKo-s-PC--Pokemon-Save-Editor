@@ -25,6 +25,9 @@ let _eventBus = null;
 /** @type {import('../../state/appState.js').AppState|null} */
 let _appState = null;
 
+/** @type {Function|null} Reference to the Escape key handler so we can clean it up */
+let _escHandler = null;
+
 /**
  * Initialize the export modal.
  * Listens for OPEN_EXPORT_MODAL / CLOSE_EXPORT_MODAL events.
@@ -210,13 +213,12 @@ function _attachEventListeners() {
     }
 
     // Escape key to close
-    const escHandler = (e) => {
+    _escHandler = (e) => {
         if (e.key === 'Escape' && _isOpen) {
             _handleCancel();
-            document.removeEventListener('keydown', escHandler);
         }
     };
-    document.addEventListener('keydown', escHandler);
+    document.addEventListener('keydown', _escHandler);
 
     // --- Export handlers ---
 
@@ -256,6 +258,11 @@ function _handleCancel() {
  */
 function _close() {
     _isOpen = false;
+    // Remove the Escape key handler to prevent memory leak
+    if (_escHandler) {
+        document.removeEventListener('keydown', _escHandler);
+        _escHandler = null;
+    }
     if (_container) {
         _container.innerHTML = '';
     }

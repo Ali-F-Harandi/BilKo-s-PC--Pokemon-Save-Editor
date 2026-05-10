@@ -47,6 +47,8 @@ export function initGlobalDropZone(container, eventBus, appState) {
     // Prevent default browser behavior for drag events on the whole document
     document.addEventListener('dragover', _onDragOver);
     document.addEventListener('drop', _onDropOutside);
+    // Handle drag cancel (user releases mouse outside window or presses Escape)
+    document.addEventListener('dragend', _onDragEnd);
 }
 
 /**
@@ -55,6 +57,7 @@ export function initGlobalDropZone(container, eventBus, appState) {
 export function destroyGlobalDropZone() {
     document.removeEventListener('dragover', _onDragOver);
     document.removeEventListener('drop', _onDropOutside);
+    document.removeEventListener('dragend', _onDragEnd);
     _hideOverlay();
     _container = null;
     _eventBus = null;
@@ -87,6 +90,17 @@ function _onDragOver(e) {
  */
 function _onDropOutside(e) {
     // Reset counter
+    _dragCounter = 0;
+    _hideOverlay();
+}
+
+/**
+ * Handle dragend on the document (fires when a drag is cancelled or completed).
+ * This ensures the overlay is hidden if the user cancels the drag by releasing
+ * outside the window or pressing Escape.
+ * @private
+ */
+function _onDragEnd() {
     _dragCounter = 0;
     _hideOverlay();
 }

@@ -4,6 +4,10 @@
  * Faithfully ported from components/editor/EditorTools.tsx
  * Provides search bar, move mode toggle, and export button.
  * Sticky below the header.
+ *
+ * FIX: Search bar now filters Pokémon in party/PC boxes by name,
+ * species, or level. Uses a state variable and emits events to
+ * trigger re-rendering of filtered content.
  */
 
 import { Events } from '../../state/eventBus.js';
@@ -11,9 +15,27 @@ import { Events } from '../../state/eventBus.js';
 // ---- Cleanup (event listener memory leak prevention) ----
 let _unsubs = [];
 
+/** @type {string} Current search filter text */
+let _searchFilter = '';
+
+/** @type {string|null} Timer ID for debounced search */
+let _searchDebounceTimer = null;
+
 export function destroyEditorTools() {
     _unsubs.forEach(fn => fn());
     _unsubs = [];
+    if (_searchDebounceTimer) {
+        clearTimeout(_searchDebounceTimer);
+        _searchDebounceTimer = null;
+    }
+}
+
+/**
+ * Get the current search filter value (used by editorDashboard for filtering).
+ * @returns {string}
+ */
+export function getSearchFilter() {
+    return _searchFilter;
 }
 
 /**
@@ -49,9 +71,13 @@ function _render(container, eventBus, theme, appState) {
                     <input
                         type="text"
                         id="editor-search-input"
-                        placeholder="Search..."
+                        placeholder="Search Pokémon by name, species, or level..."
+                        value="${_searchFilter}"
                         class="w-full pl-10 pr-4 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     />
+                    ${_searchFilter ? `<button id="editor-search-clear" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>` : ''}
                 </div>
 
                 <!-- Controls Area -->
@@ -85,6 +111,28 @@ function _render(container, eventBus, theme, appState) {
             </div>
         </div>
     `;
+
+    // Search bar — debounced filter
+    const searchInput = document.getElementById('editor-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
+            _searchDebounceTimer = setTimeout(() => {
+                _searchFilter = e.target.value.trim();
+                // Re-emit event to trigger content area re-render with filter applied
+                eventBus.emit(Events.EDITOR_DATA_CHANGED);
+                // Also re-render the tools bar to show/hide the clear button
+                _render(container, eventBus, theme, appState);
+            }, 250);
+        });
+    }
+
+    // Clear search button
+    document.getElementById('editor-search-clear')?.addEventListener('click', () => {
+        _searchFilter = '';
+        eventBus.emit(Events.EDITOR_DATA_CHANGED);
+        _render(container, eventBus, theme, appState);
+    });
 
     // Move mode toggle
     document.getElementById('move-mode-toggle-btn')?.addEventListener('click', () => {

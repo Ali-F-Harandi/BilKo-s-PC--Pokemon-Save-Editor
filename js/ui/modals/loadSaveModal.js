@@ -28,6 +28,9 @@ let _appState = null;
 /** @type {boolean} Whether files are being dragged over the monitor */
 let _isDragOver = false;
 
+/** @type {Function|null} Reference to the Escape key handler so we can clean it up */
+let _escHandler = null;
+
 /**
  * Initialize the load save modal.
  * Listens for OPEN_LOAD_MODAL / CLOSE_LOAD_MODAL events.
@@ -215,13 +218,12 @@ function _attachEventListeners() {
     }
 
     // Escape key to close
-    const escHandler = (e) => {
+    _escHandler = (e) => {
         if (e.key === 'Escape' && _isOpen) {
             _close();
-            document.removeEventListener('keydown', escHandler);
         }
     };
-    document.addEventListener('keydown', escHandler);
+    document.addEventListener('keydown', _escHandler);
 
     // --- File handling ---
 
@@ -339,6 +341,11 @@ function _updateDragState(bezel, screen, statusText, isDragging) {
 function _close() {
     _isOpen = false;
     _isDragOver = false;
+    // Remove the Escape key handler to prevent memory leak
+    if (_escHandler) {
+        document.removeEventListener('keydown', _escHandler);
+        _escHandler = null;
+    }
     if (_container) {
         _container.innerHTML = '';
     }

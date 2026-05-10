@@ -75,6 +75,12 @@ export function createSlotLogic(config) {
 
     // ---- Drag Start ----
     const handleDragStart = (e) => {
+        // Clear any pending long-press timer to prevent interference during drag
+        if (longPressTimer !== null) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+
         // Auto-Enable Move Mode
         if (!isMoveMode && mon && onEnableMoveMode) {
             onEnableMoveMode();

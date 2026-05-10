@@ -15,12 +15,13 @@
  */
 
 import { Events } from '../../state/eventBus.js';
-import { initEditorTools } from './editorTools.js';
+import { initEditorTools, getSearchFilter } from './editorTools.js';
 import { EVENT_DISTRIBUTIONS } from '../../data/eventDistributions.js';
 import { GEN1_EVENTS } from '../../data/events.js';
 import { TYPE_COLORS } from '../../data/gameData.js';
 import { getPokemonTypes } from '../../data/pokemonTypes.js';
 import { getPokemonName } from '../../data/pokemonNames.js';
+import { parsePk1 } from '../../engine/parser.js';
 
 // ================================================================
 // ---- CONSTANTS ----
@@ -127,6 +128,21 @@ function hpBarHTML(current, max) {
 function gameHeaderColor(theme) {
     const gt = theme?.getGameTheme?.();
     return gt ? gt.color : '#3B82F6';
+}
+
+/**
+ * Check if a Pokémon matches the current search filter.
+ * Filters by nickname, species name, or level.
+ * @param {Object} mon - PokemonStats object (or null/undefined for empty slots)
+ * @returns {boolean} True if the Pokémon matches or there's no filter
+ */
+function matchesSearchFilter(mon) {
+    const filter = getSearchFilter().toLowerCase();
+    if (!filter || !mon) return true;
+    const nickname = (mon.nickname || '').toLowerCase();
+    const speciesName = (mon.speciesName || '').toLowerCase();
+    const level = String(mon.level || '');
+    return nickname.includes(filter) || speciesName.includes(filter) || level.includes(filter);
 }
 
 function sectionHeaderHTML(icon, title, theme, extra = '') {
@@ -380,7 +396,9 @@ function _renderHomeTab(data, appState, theme) {
                         <div class="text-xs font-bold text-gray-600 dark:text-gray-400 mb-2">Badges</div>
                         <div class="grid grid-cols-4 gap-2" id="badge-grid">
                             ${Array.from({ length: 8 }, (_, i) => {
-                                const earned = isEditing ? (form.badges?.[i] ?? false) : (trainer.badges?.[i] ?? false);
+                                // When not editing, trainer.badges is a byte — convert bit to boolean
+                                const badgesByte = trainer.badges || 0;
+                                const earned = isEditing ? (form.badges?.[i] ?? false) : ((badgesByte >> i) & 1) === 1;
                                 return `
                                 <button data-badge-index="${i}" class="flex flex-col items-center gap-0.5 p-1 rounded-lg transition-all ${earned ? 'bg-yellow-200 dark:bg-yellow-800 opacity-100' : 'bg-gray-100 dark:bg-gray-800 opacity-40'}" title="Badge ${i + 1}">
                                     <img src="${BADGE_SPRITE_BASE}/${i + 1}.png" alt="Badge ${i + 1}" class="w-8 h-8 pixelated" onerror="this.style.display='none'">
@@ -406,7 +424,7 @@ function _renderHomeTab(data, appState, theme) {
                 ${sectionHeaderHTML('heart', `Party (${data.party?.length || 0}/6)`, theme,
                     `<span class="ml-auto bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs font-bold px-2 py-1 rounded-full">${data.party?.length || 0}</span>`)}
                 <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                    ${(data.party || []).map((mon, i) => _renderPartyCard(mon, i)).join('')}
+                    ${(data.party || []).map((mon, i) => matchesSearchFilter(mon) ? _renderPartyCard(mon, i) : _renderEmptySlot('party', i)).join('')}
                     ${_renderEmptyPartySlots(data.party?.length || 0)}
                 </div>
             </div>
@@ -494,7 +512,9 @@ function _renderStorageTab(data, appState, theme) {
                 <div class="grid grid-cols-5 gap-2" id="pc-box-grid">
                     ${Array.from({ length: 20 }, (_, i) => {
                         const mon = box[i];
-                        return mon ? _renderBoxSlot(mon, i, isMoveMode) : _renderEmptyBoxSlot(i);
+                        if (mon && matchesSearchFilter(mon)) return _renderBoxSlot(mon, i, isMoveMode);
+                        if (mon && !matchesSearchFilter(mon)) return _renderEmptyBoxSlot(i); // Hide filtered-out mons
+                        return _renderEmptyBoxSlot(i);
                     }).join('')}
                 </div>
             </div>
@@ -926,7 +946,11 @@ function _bindContentEvents(container, eventBus, theme, appState) {
             const tab = appState.getActiveTab();
             if (!tab) return;
             _localState.trainerEditing = true;
-            _localState.trainerForm = { ...tab.data.trainer };
+            // Convert badges byte to boolean array for the form
+            const trainer = tab.data.trainer;
+            const badgesByte = trainer.badges || 0;
+            const badgesArray = Array.from({ length: 8 }, (_, i) => ((badgesByte >> i) & 1) === 1);
+            _localState.trainerForm = { ...trainer, badges: badgesArray };
             _updateContentArea(container, eventBus, theme, appState);
         });
     }
@@ -944,14 +968,30 @@ function _bindContentEvents(container, eventBus, theme, appState) {
             const playtimeEl = container.querySelector('#edit-playtime');
             const pikachuEl = container.querySelector('#edit-pikachu');
 
+            // Reconstruct badges byte from the checkbox state in the DOM
+            let badgesByte = 0;
+            container.querySelectorAll('[data-badge-index]').forEach(btn => {
+                const idx = Number(btn.dataset.badgeIndex);
+                // Check if the badge is earned (has the 'earned' visual class)
+                const isEarned = btn.classList.contains('bg-yellow-200') || btn.classList.contains('dark:bg-yellow-800');
+                if (isEarned || form.badges?.[idx]) {
+                    badgesByte |= (1 << idx);
+                }
+            });
+
+            // Validate play time format (expect "XXh YYm")
+            const playTimeVal = playtimeEl?.value || form.playTime;
+            const ptMatch = playTimeVal?.match(/^(\d+)h\s*(\d+)m$/);
+            const playTime = ptMatch ? playTimeVal : form.playTime;
+
             const updates = {
                 name: nameEl?.value || form.name,
                 rivalName: rivalEl?.value || form.rivalName,
                 id: idEl?.value ? Number(idEl.value) : form.id,
                 money: moneyEl?.value ? Number(moneyEl.value) : form.money,
                 casinoCoins: coinsEl?.value ? Number(coinsEl.value) : form.casinoCoins,
-                playTime: playtimeEl?.value || form.playTime,
-                badges: form.badges,
+                playTime: playTime,
+                badges: badgesByte,
             };
             if (pikachuEl) updates.pikachuFriendship = Number(pikachuEl.value);
 
@@ -1101,10 +1141,24 @@ function _bindContentEvents(container, eventBus, theme, appState) {
             const eventId = btn.dataset.eventId;
             const event = EVENT_DISTRIBUTIONS.find(e => e.id === eventId);
             if (event && event.bytes) {
-                // Create a minimal mon object from the event bytes for adding
-                const mon = { dexId: event.previewDexId, speciesName: getPokemonName(event.previewDexId), nickname: getPokemonName(event.previewDexId), level: 5, hp: 20, maxHp: 20, isEvent: true, eventBytes: event.bytes };
-                appState.handleAddPokemon(mon, 'pc');
-                eventBus.emit(Events.POKEMON_ADDED, { mon, target: 'pc' });
+                // Parse the event's raw .pk1 bytes into a proper PokemonStats object
+                const bytes = event.bytes;
+                let pk1Data = new Uint8Array(bytes);
+
+                // Handle 71-byte variant (trim to 69 bytes: 3 padding + 66 data)
+                if (pk1Data.length === 71) {
+                    pk1Data = pk1Data.slice(0, 69);
+                }
+
+                const mon = parsePk1(pk1Data);
+                if (mon) {
+                    mon.isParty = false;
+                    appState.handleAddPokemon(mon, 'pc');
+                    eventBus.emit(Events.POKEMON_ADDED, { mon, target: 'pc' });
+                } else {
+                    // Fallback: show error if parsing fails
+                    appState.showToast('Failed to parse event Pokémon data.');
+                }
             }
         });
     });

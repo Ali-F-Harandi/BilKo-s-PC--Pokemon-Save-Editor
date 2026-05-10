@@ -1103,6 +1103,9 @@ export class AppState {
         }
 
         this.handleSaveUpdate(this._activeTabId, newData);
-        this._eventBus.emit(Events.POKEMON_UPDATED, updatedMon);
+        // NOTE: Do NOT emit POKEMON_UPDATED here — the modal already emits it
+        // before calling this method, and re-emitting causes an infinite loop.
+        // The SAVE_UPDATED and TABS_CHANGED events emitted by handleSaveUpdate
+        // are sufficient for all other UI modules to react.
     }
 }

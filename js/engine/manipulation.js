@@ -60,6 +60,22 @@ export function movePokemonBatch(
   sources,
   target
 ) {
+  // Capacity check: ensure target container won't exceed its limit
+  const maxCapacity = target.type === 'party' ? 6 : 20;
+  const targetList = target.type === 'party' ? data.party : data.pcBoxes[target.boxIndex];
+  const currentOccupied = targetList.filter(m => m !== null && m !== undefined).length;
+  // In same-container reorders, sources are removed first so capacity is preserved
+  // But we still check for cross-type moves via this function being called incorrectly
+  const isSameContainer = sources.every(s =>
+    s.type === target.type && (s.type === 'party' || s.boxIndex === target.boxIndex)
+  );
+  if (!isSameContainer && currentOccupied + sources.length > maxCapacity) {
+    return {
+      success: false,
+      error: `Not enough space! Target ${target.type === 'party' ? 'party' : 'box'} has ${maxCapacity - currentOccupied} slot(s) free, but you're moving ${sources.length} Pokémon.`
+    };
+  }
+
   // Sort sources to ensure predictable order
   const sortedSources = [...sources].sort((a, b) => {
     if (a.type !== b.type) return a.type === 'party' ? -1 : 1;
@@ -177,6 +193,11 @@ export function transferPokemonBatch(
 
     // Check limits
     const tgtLimit = tgtLoc.type === 'party' ? 6 : 20;
+    const tgtCurrentOccupied = tgtList.filter(m => m !== null && m !== undefined).length;
+    if (tgtCurrentOccupied >= tgtLimit) {
+      // Target is full — cannot add more
+      continue;
+    }
     if (tgtLoc.index >= tgtLimit) break; // Stop if target full/out of bounds
 
     // Get Mons

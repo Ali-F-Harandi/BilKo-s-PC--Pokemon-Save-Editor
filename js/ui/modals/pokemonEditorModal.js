@@ -16,6 +16,7 @@ import { getGrowthRate, getLevelFromExp, getExpAtLevel } from '../../data/experi
 import { TYPE_COLORS } from '../../data/gameData.js';
 import { POKEDEX_ENTRIES } from '../../data/pokedexEntries.js';
 import { calculateGen1Stat } from '../../engine/statCalculator.js';
+import { createPk1Binary } from '../../engine/writer.js';
 
 const GAME_COLORS = { red: '#FF3B3B', blue: '#3B4CCA', yellow: '#FFD733' };
 const STAT_KEYS = ['hp', 'attack', 'defense', 'speed', 'special'];
@@ -229,7 +230,14 @@ function render(container, eventBus, theme, appState) {
 
   // --- Autocomplete setup ---
   setupAutoComplete('pe-species', POKEMON_NAMES, (idx) => {
-    if (idx > 0 && idx <= 151) { localMon.dexId = idx; refreshAll(container, eventBus, theme, appState); markDirty(container, eventBus); }
+    if (idx > 0 && idx <= 151) {
+      localMon.dexId = idx;
+      // Recalculate stats with new species base stats immediately
+      calcAllStats(localMon);
+      // Also reset catch rate to the new species default
+      localMon.catchRate = GEN1_CATCH_RATES[idx] ?? localMon.catchRate;
+      refreshAll(container, eventBus, theme, appState); markDirty(container, eventBus);
+    }
   }, container);
   [0,1,2,3].forEach(i => {
     setupAutoComplete(`pe-move-${i}`, MOVES_LIST, (idx) => {
@@ -321,14 +329,15 @@ function render(container, eventBus, theme, appState) {
 
   // Export .pk1
   document.getElementById('pe-export')?.addEventListener('click', () => {
-    const data = new Uint8Array(33);
-    data[0] = localMon.dexId || 0;
-    data[1] = localMon.level || 1;
-    // A real .pk1 would have full byte encoding — simplified here
-    const blob = new Blob([data], { type: 'application/octet-stream' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `${localMon.nickname || POKEMON_NAMES[localMon.dexId] || 'pokemon'}.pk1`;
-    a.click(); URL.revokeObjectURL(a.href);
+    try {
+      const data = createPk1Binary(localMon);
+      const blob = new Blob([data], { type: 'application/octet-stream' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = `${localMon.nickname || POKEMON_NAMES[localMon.dexId] || 'pokemon'}.pk1`;
+      a.click(); URL.revokeObjectURL(a.href);
+    } catch (err) {
+      console.error('Failed to export .pk1', err);
+    }
   });
 
   // Pokédex entry
