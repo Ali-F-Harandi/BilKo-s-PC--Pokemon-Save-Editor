@@ -56,18 +56,10 @@ import { initSortSettingsModal } from './ui/modals/sortSettingsModal.js';
 import { initPokemonEditorModal } from './ui/modals/pokemonEditorModal.js';
 import { initMoveModeFAB } from './ui/components/moveModeFAB.js';
 
-// ---- Phase 2: Gen1 UI Extensions ----
-import { CatchRateSection } from './generations/gen1/uiExtensions/CatchRateSection.js';
-import { SpecialStatSection } from './generations/gen1/uiExtensions/SpecialStatSection.js';
-import { registerExtension as registerInfoExtension } from './ui/panels/PokemonInfoPanel.js';
-import { registerExtension as registerStatsExtension } from './ui/panels/PokemonStatsPanel.js';
-import { registerExtension as registerMovesExtension } from './ui/panels/PokemonMovesPanel.js';
-
-// ---- Phase 3: Gen2 UI Extensions ----
-import { HeldItemSection } from './generations/gen2/uiExtensions/HeldItemSection.js';
-import { ShinyFlagSection } from './generations/gen2/uiExtensions/ShinyFlagSection.js';
-import { GenderSection } from './generations/gen2/uiExtensions/GenderSection.js';
-import { SplitSpecialSection } from './generations/gen2/uiExtensions/SplitSpecialSection.js';
+// ---- Phase 2+3: UI Extensions are now handled schema-driven via adapters ----
+// The extension registration system has been replaced by the adapter's getPokemonSchema()
+// and supportsFeature() pattern. Each adapter defines its own fields in the schema,
+// and the PokemonEditorModal renders them dynamically. No registerExtension needed.
 
 // ---- Global Instances ----
 export const eventBus = new EventBus();
@@ -85,21 +77,10 @@ export const saveManager = new SaveManager(adapterFactory);
 export const gen1Adapter = adapterFactory.createForGeneration(1);
 export const gen2Adapter = adapterFactory.createForGeneration(2);
 
-// ---- Phase 2: Register Gen1 UI Extensions ----
-const catchRateExt = new CatchRateSection();
-const specialStatExt = new SpecialStatSection();
-registerMovesExtension(catchRateExt);
-registerStatsExtension(specialStatExt);
-
-// ---- Phase 3: Register Gen2 UI Extensions ----
-const heldItemExt = new HeldItemSection();
-const shinyExt = new ShinyFlagSection();
-const genderExt = new GenderSection();
-const splitSpecialExt = new SplitSpecialSection();
-registerMovesExtension(heldItemExt);
-registerInfoExtension(shinyExt);
-registerInfoExtension(genderExt);
-registerStatsExtension(splitSpecialExt);
+// ---- UI Extension Registration removed ----
+// Gen-specific fields are now handled via adapter.getPokemonSchema() and
+// adapter.supportsFeature(). The PokemonEditorModal renders all fields
+// dynamically from the schema, making the extension system unnecessary.
 
 // ---- Enable debug logging if ?debug param is present ----
 if (typeof URLSearchParams !== 'undefined') {
