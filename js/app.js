@@ -14,6 +14,13 @@
  * - Fixed gameVersionSelector event name (was raw string, now Events constant)
  * - Toast auto-dismiss after 3 seconds
  * - Sidebar drawer closes on Escape
+ *
+ * Phase 1 Re-Architecture: Multi-Generation Adapter Pattern
+ * - GenerationRegistry & AdapterFactory for multi-gen support
+ * - Canonical Data Model (CanonicalPokemon, CanonicalSaveFile)
+ * - BaseAdapter → Gen1Adapter for Gen 1 specific logic
+ * - UIComponent base class for modular UI components
+ * - Schema-driven UI rendering support
  */
 
 // ---- Import Dependencies ----
@@ -21,6 +28,12 @@ import { EventBus, Events } from './state/eventBus.js';
 import { ThemeManager } from './state/theme.js';
 import { AppState } from './state/appState.js';
 import { EditorState } from './state/editorState.js';
+
+// ---- Phase 1: Multi-Generation Architecture ----
+import { GenerationRegistry } from './core/GenerationRegistry.js';
+import { AdapterFactory } from './core/AdapterFactory.js';
+import { Gen1Adapter } from './generations/gen1/Gen1Adapter.js';
+import { UIRegistry } from './ui/components/UIRegistry.js';
 import { initHeader, destroyHeader } from './ui/layout/header.js';
 import { initFooter } from './ui/layout/footer.js';
 import { initGlobalDropZone, destroyGlobalDropZone } from './ui/layout/globalDropZone.js';
@@ -46,6 +59,14 @@ export const eventBus = new EventBus();
 export const theme = new ThemeManager(eventBus);
 export const appState = new AppState(eventBus, theme);
 export const editorState = new EditorState(eventBus, appState);
+
+// ---- Phase 1: Adapter Architecture Instances ----
+export const generationRegistry = new GenerationRegistry();
+export const adapterFactory = new AdapterFactory(generationRegistry);
+export const uiRegistry = new UIRegistry();
+
+// Convenience: Get the Gen 1 adapter (the only one registered in Phase 1)
+export const gen1Adapter = adapterFactory.createForGeneration(1);
 
 // ---- Enable debug logging if ?debug param is present ----
 if (typeof URLSearchParams !== 'undefined') {
@@ -588,5 +609,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    console.log('[BilKo\'s PC] Gen 1 Save Editor initialized. Phase 8: Integration & Polish ready.');
+    // Log architecture info
+    console.log('[BilKo\'s PC] Gen 1 Save Editor initialized.');
+    console.log(`[BilKo\'s PC] Phase 1 Re-Architecture: Adapter Factory online.`);
+    console.log(`[BilKo\'s PC] Registered generations: [${generationRegistry.getRegisteredGenerations().join(', ')}]`);
+    console.log(`[BilKo\'s PC] Registered games: [${generationRegistry.getRegisteredGames().join(', ')}]`);
+    console.log(`[BilKo\'s PC] Gen1Adapter available: ${gen1Adapter !== null}`);
+    if (gen1Adapter) {
+        const schema = gen1Adapter.getPokemonSchema();
+        console.log(`[BilKo\'s PC] Gen1 Pokemon Schema: ${schema.sections.length} sections, ${schema.sections.reduce((t, s) => t + s.fields.length, 0)} fields`);
+    }
 });

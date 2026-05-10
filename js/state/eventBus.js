@@ -240,4 +240,12 @@ export const Events = {
     // ---- View Sync ----
     /** @payload {ParsedSave} data — fired when active tab's data changes and editor should re-render */
     EDITOR_DATA_CHANGED: 'editorDataChanged',
+
+    // ---- Adapter Architecture (Phase 1) ----
+    /** @payload {number} generationId — fired when a generation adapter is registered */
+    ADAPTER_REGISTERED: 'adapterRegistered',
+    /** @payload {{ generationId: number, adapter: BaseAdapter }} — fired when an adapter is created */
+    ADAPTER_CREATED: 'adapterCreated',
+    /** @payload {{ generationId: number, schema: Object }} — fired when schema is requested */
+    SCHEMA_REQUESTED: 'schemaRequested',
 };
