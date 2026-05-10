@@ -119,8 +119,10 @@ function _syncLocalState(appState) {
     const tab = appState.getActiveTab();
     if (!tab) return;
     const d = tab.data;
-    if (_localState.pokedexOwned === null) _localState.pokedexOwned = d.pokedexOwnedFlags ? [...d.pokedexOwnedFlags] : new Array(152).fill(false);
-    if (_localState.pokedexSeen === null) _localState.pokedexSeen = d.pokedexSeenFlags ? [...d.pokedexSeenFlags] : new Array(152).fill(false);
+    const adapter = appState.getActiveAdapter?.() || null;
+    const pokedexSize = adapter ? adapter.getPokedexSize() : 151;
+    if (_localState.pokedexOwned === null) _localState.pokedexOwned = d.pokedexOwnedFlags ? [...d.pokedexOwnedFlags] : new Array(pokedexSize + 1).fill(false);
+    if (_localState.pokedexSeen === null) _localState.pokedexSeen = d.pokedexSeenFlags ? [...d.pokedexSeenFlags] : new Array(pokedexSize + 1).fill(false);
     if (_localState.eventFlags === null) _localState.eventFlags = d.eventFlags ? [...d.eventFlags] : [];
 }
 

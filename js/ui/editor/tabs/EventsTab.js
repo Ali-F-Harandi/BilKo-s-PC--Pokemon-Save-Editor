@@ -1,7 +1,8 @@
 /**
  * EventsTab.js — World Events Flag Editor
  *
- * Extracted from editorDashboard.js _renderEventsTab.
+ * Refactored: Uses adapter for event data. For unsupported generations,
+ * shows a "Coming Soon" placeholder.
  */
 
 import { Events } from '../../../state/eventBus.js';
@@ -9,6 +10,23 @@ import { GEN1_EVENTS } from '../../../data/events.js';
 import { sectionHeaderHTML } from '../shared/helpers.js';
 
 export function render(data, appState, theme, eventBus, localState) {
+    const adapter = appState?.getActiveAdapter?.() || null;
+    const generationId = adapter ? adapter.generationId : (data?.generationId || data?.generation || 1);
+
+    // Only Gen1 has events data currently
+    if (generationId !== 1) {
+        return `
+        <div class="w-full">
+            <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-800 p-12">
+                <div class="flex flex-col items-center text-center">
+                    <i data-lucide="clock" class="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4"></i>
+                    <h3 class="text-lg font-black text-gray-400 dark:text-gray-600 mb-2">Coming Soon</h3>
+                    <p class="text-sm text-gray-400 dark:text-gray-600">World Events editing is not yet supported for Generation ${generationId}. It will be available in a future update.</p>
+                </div>
+            </div>
+        </div>`;
+    }
+
     const flags = localState.eventFlags || data.eventFlags || [];
 
     // Group events by category

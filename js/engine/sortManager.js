@@ -1,9 +1,22 @@
 /**
- * sortManager.js — PC Box Sorting Logic
+ * sortManager.js — PC Box Sorting Logic (Generation-Agnostic)
  *
- * Ported from lib/utils/sortManager.ts
- * Supports single-box, all-individual, all-global, and Living Dex sorting.
+ * Refactored: Now queries the adapter for box count, pokedex size, and box capacity
+ * instead of hard-coding 12 boxes / 151 species. Accepts an adapter parameter.
  */
+
+import { GenerationRegistry } from '../core/GenerationRegistry.js';
+import { AdapterFactory } from '../core/AdapterFactory.js';
+
+// Lazy adapter factory for fallback
+let _adapterFactory = null;
+function getAdapterFactory() {
+    if (!_adapterFactory) {
+        const registry = new GenerationRegistry();
+        _adapterFactory = new AdapterFactory(registry);
+    }
+    return _adapterFactory;
+}
 
 /**
  * Comparator function for Pokemon Stats
@@ -40,12 +53,24 @@ export const sortList = (list, criteria, direction) => {
 };
 
 /**
- * Strict Living Dex Logic
+ * Strict Living Dex Logic (Generation-Agnostic)
+ * Uses adapter to determine pokedex size, box count, and box capacity.
  */
 function sortLivingDex(
   targetSave,
-  externalSaves
+  externalSaves,
+  adapter = null
 ) {
+  // Get adapter from save data if not provided
+  if (!adapter) {
+    const genId = targetSave?.generationId || targetSave?.generation || 1;
+    adapter = getAdapterFactory().createForGeneration(genId);
+  }
+
+  const pokedexSize = adapter ? adapter.getPokedexSize() : 151;
+  const boxCount = adapter ? adapter.getBoxCount() : 12;
+  const boxCapacity = adapter ? adapter.getBoxCapacity() : 20;
+
   // --- Phase 1: Collect ALL Pokemon from Target Save ONLY ---
   const targetCandidates = [];
 
@@ -58,10 +83,11 @@ function sortLivingDex(
     });
   });
 
-  // Initialize Target Boxes (12 Boxes)
-  // Boxes 0-7 (1-8): Living Dex (ID 1-151)
-  // Boxes 8-11 (9-12): Overflow
-  const newBoxes = Array.from({ length: 12 }, () => []);
+  // Initialize Target Boxes
+  // Boxes for Living Dex: ceil(pokedexSize / boxCapacity) boxes for dex entries
+  const livingDexBoxCount = Math.ceil(pokedexSize / boxCapacity);
+  const overflowStartBox = livingDexBoxCount;
+  const newBoxes = Array.from({ length: boxCount }, () => []);
 
   const dexKeepers = new Map(); // ID -> Candidate
   const overflow = [];
@@ -70,17 +96,17 @@ function sortLivingDex(
   const targetGroups = new Map();
 
   targetCandidates.forEach(c => {
-    if (c.mon.dexId >= 1 && c.mon.dexId <= 151) {
+    if (c.mon.dexId >= 1 && c.mon.dexId <= pokedexSize) {
       if (!targetGroups.has(c.mon.dexId)) targetGroups.set(c.mon.dexId, []);
       targetGroups.get(c.mon.dexId).push(c);
     } else {
-      // Glitch mons or outside gen 1 range immediately to overflow
+      // Glitch mons or outside range go to overflow
       overflow.push(c);
     }
   });
 
   // Select Keepers from Target Save
-  for (let id = 1; id <= 151; id++) {
+  for (let id = 1; id <= pokedexSize; id++) {
     const group = targetGroups.get(id);
     if (group && group.length > 0) {
       // Sort by Level Descending (Higher level wins)
@@ -97,21 +123,15 @@ function sortLivingDex(
   }
 
   // --- Phase 2: Fill Gaps from External Saves (Move Logic) ---
-  // Only if externalSaves are provided (checkbox checked)
-
   const usedExternalCandidates = new Set();
 
   if (externalSaves.length > 0) {
-    for (let id = 1; id <= 151; id++) {
-      // If we ALREADY have a keeper from Target save, skip.
-      // We do NOT replace Target mons with External mons, nor do we move extra external mons.
+    for (let id = 1; id <= pokedexSize; id++) {
       if (dexKeepers.has(id)) continue;
 
-      // Slot is empty. Look in external saves.
       let bestExternal = null;
 
       for (const ext of externalSaves) {
-        // Collect matching ID from this save
         const matches = [];
 
         ext.data.party.forEach((mon, idx) => {
@@ -124,11 +144,9 @@ function sortLivingDex(
         });
 
         if (matches.length > 0) {
-          // Pick best from this save
           matches.sort((a, b) => b.mon.level - a.mon.level);
           const candidate = matches[0];
 
-          // Compare with current best external found so far
           if (!bestExternal || candidate.mon.level > bestExternal.mon.level) {
             bestExternal = candidate;
           }
@@ -145,31 +163,27 @@ function sortLivingDex(
   // --- Phase 3: Construct Boxes ---
 
   // 3a. Place Keepers (Living Dex)
-  // Box 0: 1-20, Box 1: 21-40 ...
-  for (let id = 1; id <= 151; id++) {
+  for (let id = 1; id <= pokedexSize; id++) {
     const keeper = dexKeepers.get(id);
     if (keeper) {
-      const boxIndex = Math.floor((id - 1) / 20);
-      if (boxIndex < 8) {
+      const boxIndex = Math.floor((id - 1) / boxCapacity);
+      if (boxIndex < livingDexBoxCount) {
         newBoxes[boxIndex].push(keeper.mon);
       } else {
-        // Should not happen mathematically for 1-151, but safety
         overflow.push(keeper);
       }
     }
   }
 
   // 3b. Place Overflow (Target Save Only)
-  // Sort overflow by ID for neatness
   overflow.sort((a, b) => a.mon.dexId - b.mon.dexId);
 
-  // Fill Boxes 8-11
-  let currentOvBox = 8;
+  let currentOvBox = overflowStartBox;
   for (const item of overflow) {
-    while (currentOvBox < 12 && newBoxes[currentOvBox].length >= 20) {
+    while (currentOvBox < boxCount && newBoxes[currentOvBox].length >= boxCapacity) {
       currentOvBox++;
     }
-    if (currentOvBox < 12) {
+    if (currentOvBox < boxCount) {
       newBoxes[currentOvBox].push(item.mon);
     } else {
       console.warn("Storage Full! Dropping pokemon:", item.mon.nickname);
@@ -177,23 +191,17 @@ function sortLivingDex(
   }
 
   // --- Phase 4: Party Safety ---
-  // Rule: Party must not be empty.
-  // Strategy: Take the LAST available Pokemon from Overflow.
-  // If Overflow empty, take LAST Pokemon from Living Dex.
-
   let partyMon = undefined;
 
-  // Try finding one in overflow (Boxes 11 -> 8)
-  for (let i = 11; i >= 8; i--) {
+  for (let i = boxCount - 1; i >= overflowStartBox; i--) {
     if (newBoxes[i].length > 0) {
       partyMon = newBoxes[i].pop();
       if (partyMon) break;
     }
   }
 
-  // If still no party mon, steal from Living Dex (Boxes 7 -> 0)
   if (!partyMon) {
-    for (let i = 7; i >= 0; i--) {
+    for (let i = overflowStartBox - 1; i >= 0; i--) {
       if (newBoxes[i].length > 0) {
         partyMon = newBoxes[i].pop();
         if (partyMon) break;
@@ -201,11 +209,8 @@ function sortLivingDex(
     }
   }
 
-  // Ensure Party Mon is set to Party Mode
   const finalParty = [];
   if (partyMon) {
-    // Recalculate stats for Party if needed (Box mons might rely on Base Stats)
-    // Ideally we assume the stats are valid or use helper, simply flagging isParty=true triggers recalc in UI usually
     finalParty.push({ ...partyMon, isParty: true });
   }
 
@@ -240,22 +245,32 @@ function sortLivingDex(
 }
 
 /**
- * Main Sort Function
+ * Main Sort Function (Generation-Agnostic)
  */
 export function sortPCBoxes(
   targetSave,
   scope,
   criteria,
   direction,
-  externalSaves = []
+  externalSaves = [],
+  adapter = null
 ) {
+  // Get adapter from save data if not provided
+  if (!adapter) {
+    const genId = targetSave?.generationId || targetSave?.generation || 1;
+    adapter = getAdapterFactory().createForGeneration(genId);
+  }
+
+  const boxCount = adapter ? adapter.getBoxCount() : 12;
+  const boxCapacity = adapter ? adapter.getBoxCapacity() : 20;
+
   if (scope === 'living-dex') {
-    return sortLivingDex(targetSave, externalSaves);
+    return sortLivingDex(targetSave, externalSaves, adapter);
   }
 
   // -- Standard Sorting (Current Save Only) --
 
-  let newBoxes = targetSave.pcBoxes.map(box => [...box]); // Deep clone
+  let newBoxes = targetSave.pcBoxes.map(box => [...box]);
 
   if (scope === 'single') {
     const boxIdx = targetSave.currentBoxId;
@@ -271,10 +286,10 @@ export function sortPCBoxes(
     newBoxes.forEach(box => allMons.push(...box));
     allMons = sortList(allMons, criteria, direction);
 
-    newBoxes = Array.from({ length: 12 }, () => []);
-    for (let i = 0; i < 12; i++) {
-      const start = i * 20;
-      const end = start + 20;
+    newBoxes = Array.from({ length: boxCount }, () => []);
+    for (let i = 0; i < boxCount; i++) {
+      const start = i * boxCapacity;
+      const end = start + boxCapacity;
       if (start < allMons.length) {
         newBoxes[i] = allMons.slice(start, end);
       }

@@ -20,15 +20,28 @@
 import { Events } from './eventBus.js';
 import { detectAndParseSave } from '../engine/parser.js';
 import { writeGen1Save } from '../engine/writer.js';
-import { Gen2Adapter } from '../generations/gen2/Gen2Adapter.js';
+import { GenerationRegistry } from '../core/GenerationRegistry.js';
+import { AdapterFactory } from '../core/AdapterFactory.js';
 import { transferPokemonBatch, movePokemonBatch, isSameLocation } from '../engine/manipulation.js';
 import { sortPCBoxes } from '../engine/sortManager.js';
 
-// Lazy Gen2 adapter instance for Gen 2 save writing
-let _gen2Adapter = null;
-function getGen2Adapter() {
-    if (!_gen2Adapter) _gen2Adapter = new Gen2Adapter();
-    return _gen2Adapter;
+// AdapterFactory instance (shared across app)
+let _adapterFactory = null;
+function getAdapterFactory() {
+    if (!_adapterFactory) {
+        const registry = new GenerationRegistry();
+        _adapterFactory = new AdapterFactory(registry);
+    }
+    return _adapterFactory;
+}
+
+/**
+ * Get the adapter for the given generation ID.
+ * @param {number} generationId
+ * @returns {import('../core/BaseAdapter.js').BaseAdapter|null}
+ */
+function getAdapterForGeneration(generationId) {
+    return getAdapterFactory().createForGeneration(generationId);
 }
 
 /**
@@ -179,6 +192,17 @@ export class AppState {
     isTabDirty(tabId) {
         const tab = this.getTabById(tabId);
         return tab ? tab.isDirty : false;
+    }
+
+    /**
+     * Get the adapter for the active tab's generation.
+     * @returns {import('../core/BaseAdapter.js').BaseAdapter|null}
+     */
+    getActiveAdapter() {
+        const tab = this.getActiveTab();
+        if (!tab) return null;
+        const generationId = tab.data?.generationId || tab.data?.generation || 1;
+        return getAdapterForGeneration(generationId);
     }
 
     // ================================================================
@@ -392,8 +416,8 @@ export class AppState {
 
             // Check if this is a Gen 2 save (detected by parser)
             if (result.success && result._requiresGen2Adapter) {
-                // Use Gen2Adapter to parse the save
-                const adapter = getGen2Adapter();
+                // Use AdapterFactory to get Gen2 adapter
+                const adapter = getAdapterForGeneration(2);
                 const gen2Result = await adapter.parseSaveFile(result._rawData, result._filename);
                 if (gen2Result.success && gen2Result.data) {
                     const data = gen2Result.data;
@@ -522,9 +546,9 @@ export class AppState {
             // Determine generation from save data and use appropriate writer
             let newBytes;
             const generationId = tab.data?.generationId || tab.data?.generation || 1;
-            if (generationId === 2) {
-                // Use Gen2Adapter for writing
-                const adapter = getGen2Adapter();
+            const adapter = getAdapterForGeneration(generationId);
+            if (adapter && generationId >= 2) {
+                // Use adapter for writing (Gen2+)
                 newBytes = adapter.writeSaveFile(tab.data);
             } else {
                 // Use Gen1 writer for backward compatibility
@@ -853,7 +877,9 @@ export class AppState {
                 .map(t => ({ id: t.id, data: t.data }));
         }
 
-        const result = sortPCBoxes(activeTab.data, scope, criteria, direction, externalSources);
+        const generationId = activeTab.data?.generationId || activeTab.data?.generation || 1;
+        const sortAdapter = getAdapterForGeneration(generationId);
+        const result = sortPCBoxes(activeTab.data, scope, criteria, direction, externalSources, sortAdapter);
 
         if (result.success) {
             // 1. Update Target Save (The Living Dex)

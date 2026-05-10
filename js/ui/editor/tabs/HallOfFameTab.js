@@ -1,15 +1,15 @@
 /**
  * HallOfFameTab.js — Hall of Fame Team Viewer
  *
- * Extracted from editorDashboard.js _renderHofTab.
+ * Refactored: Uses adapter for Pokemon types. For unsupported generations,
+ * shows a "Coming Soon" placeholder.
  */
 
-import { getPokemonTypes } from '../../../data/pokemonTypes.js';
 import { spriteUrl, typeDotsHTML, gameHeaderColor } from '../shared/helpers.js';
 
 export function render(data, appState, theme, eventBus, localState) {
+    const adapter = appState?.getActiveAdapter?.() || null;
     const teams = data.hallOfFame || [];
-    const headerColor = gameHeaderColor(theme);
 
     if (teams.length === 0) {
         return `
@@ -39,7 +39,10 @@ export function render(data, appState, theme, eventBus, localState) {
                 <div class="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
                     ${pokemon.map(mon => {
                         if (!mon) return '<div class="text-center text-gray-400 text-xs py-4">Empty</div>';
-                        const types = getPokemonTypes(mon.dexId);
+                        let types = ['Normal'];
+                        if (adapter) {
+                            types = adapter.getPokemonTypes(mon.dexId);
+                        }
                         return `
                         <div class="flex flex-col items-center p-2 rounded-lg bg-gray-50 dark:bg-gray-800">
                             <img src="${spriteUrl(mon.dexId)}" alt="${mon.speciesName || mon.nickname}" class="w-14 h-14 pixelated" onerror="this.style.display='none'">

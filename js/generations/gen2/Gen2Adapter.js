@@ -26,13 +26,15 @@ import { Gen2Schema } from './Gen2Schema.js';
 import { GEN2_INTERNAL_TO_DEX } from './constants.js';
 import { GEN2_POKEMON_NAMES } from './data/pokemonData.js';
 import { GEN2_POKEMON_TYPES, GEN2_GENDER_RATIOS } from './data/pokemonData.js';
-import { GEN2_MOVE_NAMES } from './data/moveData.js';
+import { GEN2_MOVE_NAMES, GEN2_MOVE_DATA } from './data/moveData.js';
 import { GEN2_ITEM_NAMES, GEN2_HELD_ITEM_IDS } from './data/itemData.js';
 import { GEN2_TYPE_NAMES, GEN2_TYPE_COLORS, GEN2_TYPE_CHART } from './data/typeChart.js';
 import { GEN2_BASE_STATS } from './data/baseStats.js';
 import { decodeGen2Text, encodeGen2Text } from './textCodec.js';
 import { getAsciiString } from '../../engine/byteHelpers.js';
 import { GEN2_OFFSETS, GEN2_SHINY_ATTACK_DVS, GEN2_SHINY_STAT_DV } from './constants.js';
+import { REGION_BADGES } from '../../data/gameData.js';
+import { getGrowthRate, getLevelFromExp, getExpAtLevel } from '../../data/experience.js';
 
 export class Gen2Adapter extends BaseAdapter {
     constructor() {
@@ -107,6 +109,25 @@ export class Gen2Adapter extends BaseAdapter {
     getPokemonSchema() { return Gen2Schema.pokemonSchema; }
     getMoveSchema() { return Gen2Schema.moveSchema; }
 
+    getTrainerSchema() {
+        return {
+            sections: [
+                {
+                    id: 'trainer',
+                    label: 'Trainer Info',
+                    fields: [
+                        { key: 'name', label: 'Name', type: 'text', maxLength: 7 },
+                        { key: 'id', label: 'Trainer ID', type: 'text', maxLength: 5 },
+                        { key: 'money', label: 'Money', type: 'number', min: 0, max: 999999 },
+                        { key: 'badges', label: 'Badges', type: 'number', min: 0, max: 16 },
+                        { key: 'rivalName', label: 'Rival Name', type: 'text', maxLength: 7 },
+                        { key: 'gender', label: 'Gender', type: 'select', options: ['Male', 'Female'] },
+                    ]
+                }
+            ]
+        };
+    }
+
     // ================================================================
     // ---- DATA ACCESS ----
     // ================================================================
@@ -149,17 +170,79 @@ export class Gen2Adapter extends BaseAdapter {
         return GEN2_INTERNAL_TO_DEX;
     }
 
+    // ================================================================
+    // ---- BADGES ----
+    // ================================================================
+
+    getBadges() {
+        return REGION_BADGES[2] || [
+            // Johto
+            { name: 'Zephyr', region: 'Johto' }, { name: 'Hive', region: 'Johto' },
+            { name: 'Plain', region: 'Johto' }, { name: 'Fog', region: 'Johto' },
+            { name: 'Storm', region: 'Johto' }, { name: 'Mineral', region: 'Johto' },
+            { name: 'Glacier', region: 'Johto' }, { name: 'Rising', region: 'Johto' },
+            // Kanto
+            { name: 'Boulder', region: 'Kanto' }, { name: 'Cascade', region: 'Kanto' },
+            { name: 'Thunder', region: 'Kanto' }, { name: 'Rainbow', region: 'Kanto' },
+            { name: 'Soul', region: 'Kanto' }, { name: 'Marsh', region: 'Kanto' },
+            { name: 'Volcano', region: 'Kanto' }, { name: 'Earth', region: 'Kanto' }
+        ];
+    }
+
+    // ================================================================
+    // ---- TYPE DATA ----
+    // ================================================================
+
+    getTypeColors() {
+        return { ...GEN2_TYPE_COLORS };
+    }
+
     getTypeChart() {
         return GEN2_TYPE_CHART;
     }
 
-    getTypeColors() {
-        return GEN2_TYPE_COLORS;
+    getPokemonTypes(dexId) {
+        const typeIds = GEN2_POKEMON_TYPES[dexId];
+        if (!typeIds) return ['Normal'];
+        return typeIds.map(id => GEN2_TYPE_NAMES[id] || 'Normal').filter(t => t && t !== '');
     }
+
+    // ================================================================
+    // ---- MOVE DATA ----
+    // ================================================================
+
+    getMovePP(moveId) {
+        const moveData = GEN2_MOVE_DATA[moveId];
+        return moveData ? moveData.pp : 0;
+    }
+
+    // ================================================================
+    // ---- EXPERIENCE ----
+    // ================================================================
+
+    getGrowthRate(dexId) {
+        return getGrowthRate(dexId);
+    }
+
+    getLevelFromExp(exp, rate) {
+        return getLevelFromExp(exp, rate);
+    }
+
+    getExpAtLevel(level, rate) {
+        return getExpAtLevel(level, rate);
+    }
+
+    // ================================================================
+    // ---- HELD ITEMS ----
+    // ================================================================
 
     getHeldItemIds() {
         return GEN2_HELD_ITEM_IDS;
     }
+
+    // ================================================================
+    // ---- SHINY & GENDER ----
+    // ================================================================
 
     /**
      * Determine if a Pokemon is shiny from its DVs.
@@ -198,16 +281,10 @@ export class Gen2Adapter extends BaseAdapter {
         }
     }
 
-    /**
-     * Calculate a stat value using the Gen 2 formula.
-     * Same formula as Gen 1.
-     * @param {number} base - Base stat
-     * @param {number} iv - Individual value (0-15)
-     * @param {number} ev - Effort value (0-65535)
-     * @param {number} level - Pokemon level (1-100)
-     * @param {boolean} isHp - Whether this is the HP stat
-     * @returns {number}
-     */
+    // ================================================================
+    // ---- STAT CALCULATION ----
+    // ================================================================
+
     calculateStat(base, iv, ev, level, isHp) {
         if (isHp) {
             return Math.floor(((2 * (base + iv) + Math.floor(Math.min(ev, 65535) / 4)) * level / 100) + level + 10);
@@ -216,11 +293,6 @@ export class Gen2Adapter extends BaseAdapter {
         }
     }
 
-    /**
-     * Recalculate all stats for a Gen 2 Pokemon.
-     * @param {CanonicalPokemon} pokemon
-     * @returns {CanonicalPokemon}
-     */
     recalculateStats(pokemon) {
         const base = this.getBaseStats(pokemon.dexId);
         if (!base) return pokemon;
@@ -275,5 +347,14 @@ export class Gen2Adapter extends BaseAdapter {
 
     getValidFileSizes() {
         return [32768]; // Gen 2 is exactly 32KB
+    }
+
+    // ================================================================
+    // ---- SUPPORTED FEATURES ----
+    // ================================================================
+
+    supportsFeature(feature) {
+        const supported = ['heldItems', 'shiny', 'gender', 'friendship', 'pokerus', 'eggSteps'];
+        return supported.includes(feature);
     }
 }

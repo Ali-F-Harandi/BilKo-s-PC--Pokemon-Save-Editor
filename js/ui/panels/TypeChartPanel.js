@@ -9,7 +9,6 @@
 import { TYPE_COLORS } from '../../data/gameData.js';
 import { GEN1_TYPE_CHART, GEN1_TYPES } from '../../generations/gen1/data/typeChart.js';
 import { PanelExtension } from './PanelExtension.js';
-
 // Extension registry: Map<generation, PanelExtension[]>
 const _extensions = new Map();
 
@@ -25,7 +24,7 @@ export function registerExtension(extension) {
     _extensions.get(extension.generation).push(extension);
 }
 
-function _renderDefenseResults(defenseType, chart, types) {
+function _renderDefenseResults(defenseType, chart, types, typeColors) {
     const categories = { '4x Weak': [], '2x Weak': [], '0.5x Resist': [], '0.25x Resist': [], '0x Immune': [], '1x Neutral': [] };
 
     for (const atkType of types) {
@@ -47,14 +46,14 @@ function _renderDefenseResults(defenseType, chart, types) {
                 <div class="rounded-xl p-3 ${colorMap[label] || 'bg-gray-100'}">
                     <div class="font-black text-xs uppercase mb-2">${label}</div>
                     <div class="flex flex-wrap gap-1.5">
-                        ${types.map(t => `<span class="px-2 py-1 rounded text-xs font-bold text-white" style="background-color:${TYPE_COLORS[t]}">${t}</span>`).join('')}
+                        ${types.map(t => `<span class="px-2 py-1 rounded text-xs font-bold text-white" style="background-color:${typeColors[t] || TYPE_COLORS[t] || '#999'}">${t}</span>`).join('')}
                         ${types.length === 0 ? '<span class="text-xs opacity-60">None</span>' : ''}
                     </div>
                 </div>`;
         }).join('');
 }
 
-function _renderOffenseResults(offenseType, chart, types) {
+function _renderOffenseResults(offenseType, chart, types, typeColors) {
     const categories = { 'Super Effective (2x)': [], 'Super Effective (4x)': [], 'Not Very Effective (0.5x)': [], 'No Effect (0x)': [], 'Neutral (1x)': [] };
 
     for (const defType of types) {
@@ -74,7 +73,7 @@ function _renderOffenseResults(offenseType, chart, types) {
                 <div class="rounded-xl p-3 ${colorMap[label] || 'bg-gray-100'}">
                     <div class="font-black text-xs uppercase mb-2">${label}</div>
                     <div class="flex flex-wrap gap-1.5">
-                        ${types.map(t => `<span class="px-2 py-1 rounded text-xs font-bold text-white" style="background-color:${TYPE_COLORS[t]}">${t}</span>`).join('')}
+                        ${types.map(t => `<span class="px-2 py-1 rounded text-xs font-bold text-white" style="background-color:${typeColors[t] || TYPE_COLORS[t] || '#999'}">${t}</span>`).join('')}
                     </div>
                 </div>`;
         }).join('');
@@ -84,8 +83,9 @@ export function render(theme, localState, adapter = null) {
     const mode = localState.battleMode;
     const selectedType = localState.battleType;
     // Use adapter-provided data if available, otherwise fallback to Gen1 data
-    const chart = (adapter?.typeChart) || GEN1_TYPE_CHART;
-    const types = (adapter?.typeList) || GEN1_TYPES;
+    const chart = adapter?.getTypeChart?.() || GEN1_TYPE_CHART;
+    const types = adapter?.getTypeList?.() || GEN1_TYPES;
+    const typeColors = adapter?.getTypeColors?.() || {};
 
     let html = `
     <div class="w-full">
@@ -103,12 +103,12 @@ export function render(theme, localState, adapter = null) {
             <div class="flex flex-wrap gap-1.5 mb-6">
                 ${types.map(t => `
                     <button class="battle-type-btn px-2.5 py-1 rounded-lg text-xs font-bold text-white transition-all hover:brightness-110 ${t === selectedType ? 'ring-2 ring-offset-2 ring-gray-900 dark:ring-white scale-105' : 'opacity-80 hover:opacity-100'}"
-                        style="background-color:${TYPE_COLORS[t]}" data-battle-type="${t}">${t}</button>
+                        style="background-color:${typeColors[t] || TYPE_COLORS[t] || '#999'}" data-battle-type="${t}">${t}</button>
                 `).join('')}
             </div>
             <!-- Results -->
             <div id="battle-results" class="space-y-4">
-                ${mode === 'defense' ? _renderDefenseResults(selectedType, chart, types) : _renderOffenseResults(selectedType, chart, types)}
+                ${mode === 'defense' ? _renderDefenseResults(selectedType, chart, types, typeColors) : _renderOffenseResults(selectedType, chart, types, typeColors)}
             </div>`;
 
     // Render extensions

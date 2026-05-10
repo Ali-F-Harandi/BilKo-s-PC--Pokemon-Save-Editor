@@ -1,12 +1,24 @@
 /**
  * manipulation.js — Pokémon Moving/Transferring Logic
  *
- * Ported from lib/utils/manipulation.ts
- * Handles reordering, transferring, and preparing Pokémon for moves.
+ * Refactored: Works with CanonicalPokemon objects and uses adapter
+ * for stat recalculation instead of importing Gen1-specific modules.
+ * Accepts an adapter parameter for recalculation.
  */
 
-import { recalculateStats, deriveBaseStats } from './statCalculator.js';
-import { GEN1_BASE_STATS } from '../data/baseStats.js';
+import { CanonicalPokemon } from '../core/CanonicalModel.js';
+import { GenerationRegistry } from '../core/GenerationRegistry.js';
+import { AdapterFactory } from '../core/AdapterFactory.js';
+
+// Lazy adapter factory
+let _adapterFactory = null;
+function getAdapterFactory() {
+    if (!_adapterFactory) {
+        const registry = new GenerationRegistry();
+        _adapterFactory = new AdapterFactory(registry);
+    }
+    return _adapterFactory;
+}
 
 // Helper to check equality of locations
 export function isSameLocation(a, b) {
@@ -20,32 +32,32 @@ export function isSameLocation(a, b) {
 }
 
 // Helper to prepare stats when moving to/from Party/Box
-const prepareForLocation = (mon, isGoingToParty) => {
+const prepareForLocation = (mon, isGoingToParty, adapter = null) => {
   const newMon = { ...mon, isParty: isGoingToParty };
-  if (isGoingToParty) {
-    let base = deriveBaseStats(newMon, 1);
-    if (!base && GEN1_BASE_STATS[newMon.dexId]) {
-      const g1Stats = GEN1_BASE_STATS[newMon.dexId];
-      base = {
-        hp: g1Stats.hp,
-        attack: g1Stats.atk,
-        defense: g1Stats.def,
-        speed: g1Stats.spe,
-        spAtk: g1Stats.spc,
-        spDef: g1Stats.spc
-      };
-    }
-
+  if (isGoingToParty && adapter) {
+    const base = adapter.getBaseStats(newMon.dexId);
     if (base) {
-      const updated = recalculateStats(newMon, base, 1);
-      newMon.maxHp = updated.maxHp;
-      newMon.attack = updated.attack;
-      newMon.defense = updated.defense;
-      newMon.speed = updated.speed;
-      newMon.special = updated.special;
-      newMon.spAtk = updated.special;
-      newMon.spDef = updated.special;
-      newMon.hp = Math.min(newMon.hp, newMon.maxHp);
+      const iv = newMon.iv || {};
+      const ev = newMon.ev || {};
+      const level = newMon.level || 1;
+
+      const spcIv = iv.special !== undefined ? iv.special : (iv.spAttack || 0);
+      const spcEv = ev.special !== undefined ? ev.special : (ev.spAttack || 0);
+
+      newMon.maxHp = adapter.calculateStat(base.hp, iv.hp || 0, ev.hp || 0, level, true);
+      newMon.hp = Math.min(newMon.hp || newMon.maxHp, newMon.maxHp);
+      newMon.attack = adapter.calculateStat(base.attack, iv.attack || 0, ev.attack || 0, level, false);
+      newMon.defense = adapter.calculateStat(base.defense, iv.defense || 0, ev.defense || 0, level, false);
+      newMon.speed = adapter.calculateStat(base.speed, iv.speed || 0, ev.speed || 0, level, false);
+      const special = adapter.calculateStat(base.special || base.spAttack, spcIv, spcEv, level, false);
+      newMon.special = special;
+      newMon.spAtk = special;
+      newMon.spDef = special;
+
+      if (adapter.generationId >= 2) {
+        newMon.spAtk = adapter.calculateStat(base.spAttack || base.special, spcIv, spcEv, level, false);
+        newMon.spDef = adapter.calculateStat(base.spDefense || base.special, spcIv, spcEv, level, false);
+      }
     }
   }
   return newMon;
@@ -58,10 +70,17 @@ const prepareForLocation = (mon, isGoingToParty) => {
 export function movePokemonBatch(
   data,
   sources,
-  target
+  target,
+  adapter = null
 ) {
+  // Get adapter from save data if not provided
+  if (!adapter) {
+    const genId = data?.generationId || data?.generation || 1;
+    adapter = getAdapterFactory().createForGeneration(genId);
+  }
+
   // Capacity check: ensure target container won't exceed its limit
-  const maxCapacity = target.type === 'party' ? 6 : 20;
+  const maxCapacity = target.type === 'party' ? (adapter?.getMaxPartySize() || 6) : (adapter?.getBoxCapacity() || 20);
   const originalTargetList = target.type === 'party' ? data.party : data.pcBoxes[target.boxIndex];
   const currentOccupied = originalTargetList.filter(m => m !== null && m !== undefined).length;
   // In same-container reorders, sources are removed first so capacity is preserved
@@ -118,7 +137,7 @@ export function movePokemonBatch(
   for (const mon of movingMons) {
     let readyMon = { ...mon };
     // prepareForLocation usually strictly for Box<->Party, but harmless here
-    readyMon = prepareForLocation(readyMon, target.type === 'party');
+    readyMon = prepareForLocation(readyMon, target.type === 'party', adapter);
     targetList.splice(insertIndex, 0, readyMon);
     insertIndex++;
   }
@@ -144,14 +163,22 @@ export function transferPokemonBatch(
   sourceSave,
   targetSave,
   sources,
-  targetStart
+  targetStart,
+  adapter = null
 ) {
   // Determine if we are operating on the same save file
   const isSameSave = sourceSave === targetSave;
 
-  // 1. Create Working Copies
-  // If same save, source and target structure references must share the same arrays to avoid overwrites.
+  // Get adapter from save data if not provided
+  if (!adapter) {
+    const genId = sourceSave?.generationId || sourceSave?.generation || 1;
+    adapter = getAdapterFactory().createForGeneration(genId);
+  }
 
+  const maxPartySize = adapter?.getMaxPartySize() || 6;
+  const boxCapacity = adapter?.getBoxCapacity() || 20;
+
+  // 1. Create Working Copies
   let sourceParty = [...sourceSave.party];
   let sourceBoxes = sourceSave.pcBoxes.map(b => [...b]);
   let targetParty;
@@ -192,27 +219,24 @@ export function transferPokemonBatch(
     const tgtList = getList(false, tgtLoc);
 
     // Check limits
-    const tgtLimit = tgtLoc.type === 'party' ? 6 : 20;
+    const tgtLimit = tgtLoc.type === 'party' ? maxPartySize : boxCapacity;
     const tgtCurrentOccupied = tgtList.filter(m => m !== null && m !== undefined).length;
     if (tgtCurrentOccupied >= tgtLimit) {
-      // Target is full — cannot add more
       continue;
     }
-    if (tgtLoc.index >= tgtLimit) break; // Stop if target full/out of bounds
+    if (tgtLoc.index >= tgtLimit) break;
 
     // Get Mons
     const srcMon = srcList[srcLoc.index];
-    // If srcMon is null (already moved in a weird overlap edge case), skip
     if (!srcMon) continue;
 
-    const tgtMon = tgtList[tgtLoc.index]; // Might be undefined/null
+    const tgtMon = tgtList[tgtLoc.index];
 
     // Validate Party Safety (Min 1 Pokemon)
-    // If Source is Party, and we are moving (tgtMon is empty), check remaining count
     if (srcLoc.type === 'party' && !tgtMon) {
       const nonNullCount = srcList.filter(m => m !== null).length;
       if (nonNullCount <= 1) {
-        continue; // Cannot empty party
+        continue;
       }
     }
 
@@ -220,11 +244,11 @@ export function transferPokemonBatch(
     const isTgtParty = tgtLoc.type === 'party';
     const isSrcParty = srcLoc.type === 'party';
 
-    const readySource = prepareForLocation({ ...srcMon }, isTgtParty);
+    const readySource = prepareForLocation({ ...srcMon }, isTgtParty, adapter);
 
     if (tgtMon) {
       // --- SWAP ---
-      const readyTarget = prepareForLocation({ ...tgtMon }, isSrcParty);
+      const readyTarget = prepareForLocation({ ...tgtMon }, isSrcParty, adapter);
 
       srcList[srcLoc.index] = readyTarget;
       tgtList[tgtLoc.index] = readySource;
@@ -236,7 +260,6 @@ export function transferPokemonBatch(
         tgtList[tgtLoc.index] = readySource;
       }
 
-      // Mark Source as Null (to be removed later) to preserve indices for subsequent iterations
       srcList[srcLoc.index] = null;
     }
   }
@@ -259,7 +282,6 @@ export function transferPokemonBatch(
   };
 
   if (isSameSave) {
-    // If same save, sourceBoxes AND targetBoxes point to the same arrays, so cleaning one cleans the "other".
     const resultSave = buildNewSave(sourceSave, sourceParty, sourceBoxes);
     return { success: true, newSource: resultSave, newTarget: resultSave };
   } else {
@@ -274,7 +296,8 @@ export function transferPokemon(
   sourceData,
   targetData,
   sourceLoc,
-  targetLoc
+  targetLoc,
+  adapter = null
 ) {
-  return transferPokemonBatch(sourceData, targetData, [sourceLoc], targetLoc);
+  return transferPokemonBatch(sourceData, targetData, [sourceLoc], targetLoc, adapter);
 }

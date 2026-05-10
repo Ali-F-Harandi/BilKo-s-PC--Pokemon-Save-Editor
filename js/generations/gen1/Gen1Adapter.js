@@ -9,10 +9,6 @@
  * (parser.js, writer.js, statCalculator.js, etc.) and provides
  * a clean adapter interface. The existing modules remain untouched
  * for full backward compatibility.
- *
- * When future generations are added, each will have its own adapter
- * following the same interface, and the application code won't need
- * to know which generation it's dealing with.
  */
 
 import { BaseAdapter } from '../../core/BaseAdapter.js';
@@ -24,12 +20,16 @@ import { Gen1Schema } from './Gen1Schema.js';
 import { GEN1_OFFSETS, GEN1_INTERNAL_TO_DEX } from '../../data/offsets.js';
 import { getPokemonName } from '../../data/pokemonNames.js';
 import { getTypeName, getPokemonTypes, GEN1_TYPE_ID_MAP } from '../../data/pokemonTypes.js';
-import { MOVES_LIST } from '../../data/moves.js';
+import { MOVES_LIST, MOVES_PP, getMoveName } from '../../data/moves.js';
 import { getItemName } from '../../data/items.js';
-import { GEN1_BASE_STATS } from '../../data/baseStats.js';
+import { GEN1_BASE_STATS, GEN1_CATCH_RATES } from '../../data/baseStats.js';
 import { calculateGen1Stat, recalculateStats } from '../../engine/statCalculator.js';
 import { decodeText, encodeText } from '../../engine/textDecoder.js';
 import { getAsciiString } from '../../engine/byteHelpers.js';
+import { getGrowthRate, getLevelFromExp, getExpAtLevel } from '../../data/experience.js';
+import { TYPE_COLORS } from '../../data/gameData.js';
+import { REGION_BADGES } from '../../data/gameData.js';
+import { GEN1_TYPE_CHART, GEN1_TYPES } from './data/typeChart.js';
 
 export class Gen1Adapter extends BaseAdapter {
     constructor() {
@@ -107,6 +107,26 @@ export class Gen1Adapter extends BaseAdapter {
     getPokemonSchema() { return Gen1Schema.pokemonSchema; }
     getMoveSchema() { return Gen1Schema.moveSchema; }
 
+    getTrainerSchema() {
+        return {
+            sections: [
+                {
+                    id: 'trainer',
+                    label: 'Trainer Info',
+                    fields: [
+                        { key: 'name', label: 'Name', type: 'text', maxLength: 7 },
+                        { key: 'id', label: 'Trainer ID', type: 'text', maxLength: 5 },
+                        { key: 'money', label: 'Money', type: 'number', min: 0, max: 999999 },
+                        { key: 'coins', label: 'Coins', type: 'number', min: 0, max: 9999 },
+                        { key: 'badges', label: 'Badges', type: 'number', min: 0, max: 255 },
+                        { key: 'rivalName', label: 'Rival Name', type: 'text', maxLength: 7 },
+                        { key: 'pikachuFriendship', label: 'Pikachu Friendship', type: 'number', min: 0, max: 255 },
+                    ]
+                }
+            ]
+        };
+    }
+
     // ================================================================
     // ---- DATA ACCESS ----
     // ================================================================
@@ -132,16 +152,7 @@ export class Gen1Adapter extends BaseAdapter {
     }
 
     getTypeList() {
-        const list = [];
-        for (let i = 0; i < 256; i++) {
-            const name = getTypeName(i);
-            if (name && name !== `Type ${i}`) {
-                list.push(name);
-            } else {
-                break; // No more valid types
-            }
-        }
-        return list;
+        return [...GEN1_TYPES];
     }
 
     getAbilityList() {
@@ -165,6 +176,63 @@ export class Gen1Adapter extends BaseAdapter {
 
     getInternalToDexMap() {
         return GEN1_INTERNAL_TO_DEX;
+    }
+
+    // ================================================================
+    // ---- BADGES ----
+    // ================================================================
+
+    getBadges() {
+        return REGION_BADGES[1] || [
+            { name: 'Boulder', region: 'Kanto' }, { name: 'Cascade', region: 'Kanto' },
+            { name: 'Thunder', region: 'Kanto' }, { name: 'Rainbow', region: 'Kanto' },
+            { name: 'Soul', region: 'Kanto' }, { name: 'Marsh', region: 'Kanto' },
+            { name: 'Volcano', region: 'Kanto' }, { name: 'Earth', region: 'Kanto' }
+        ];
+    }
+
+    // ================================================================
+    // ---- TYPE DATA ----
+    // ================================================================
+
+    getTypeColors() {
+        return { ...TYPE_COLORS };
+    }
+
+    getTypeChart() {
+        return GEN1_TYPE_CHART;
+    }
+
+    getPokemonTypes(dexId) {
+        return getPokemonTypes(dexId);
+    }
+
+    // ================================================================
+    // ---- MOVE DATA ----
+    // ================================================================
+
+    getMovePP(moveId) {
+        return MOVES_PP[moveId] || 0;
+    }
+
+    // ================================================================
+    // ---- EXPERIENCE ----
+    // ================================================================
+
+    getGrowthRate(dexId) {
+        return getGrowthRate(dexId);
+    }
+
+    getLevelFromExp(exp, rate) {
+        return getLevelFromExp(exp, rate);
+    }
+
+    getExpAtLevel(level, rate) {
+        return getExpAtLevel(level, rate);
+    }
+
+    getCatchRate(dexId) {
+        return GEN1_CATCH_RATES[dexId] ?? 0;
     }
 
     // ================================================================
@@ -216,5 +284,14 @@ export class Gen1Adapter extends BaseAdapter {
 
     getValidFileSizes() {
         return [32768, 32768 + 16];
+    }
+
+    // ================================================================
+    // ---- SUPPORTED FEATURES ----
+    // ================================================================
+
+    supportsFeature(feature) {
+        const supported = ['pokerus'];
+        return supported.includes(feature);
     }
 }

@@ -1,11 +1,11 @@
 /**
  * PokedexTab.js — Pokedex Grid with Owned/Seen Toggles
  *
- * Extracted from editorDashboard.js _renderPokedexTab.
+ * Refactored: Uses adapter for Pokemon names and pokedex size.
+ * Falls back to Gen1 data if no adapter is provided.
  */
 
 import { Events } from '../../../state/eventBus.js';
-import { getPokemonName } from '../../../data/pokemonNames.js';
 import { spriteUrl, sectionHeaderHTML } from '../shared/helpers.js';
 
 function _renderPokedexEntry(entry, isOwned, isSeen) {
@@ -27,17 +27,21 @@ function _renderPokedexEntry(entry, isOwned, isSeen) {
 }
 
 export function render(data, appState, theme, eventBus, localState) {
-    const owned = localState.pokedexOwned || data.pokedexOwnedFlags || new Array(152).fill(false);
-    const seen = localState.pokedexSeen || data.pokedexSeenFlags || new Array(152).fill(false);
+    const adapter = appState?.getActiveAdapter?.() || null;
+    const pokedexSize = adapter ? adapter.getPokedexSize() : 151;
+    const pokemonList = adapter ? adapter.getPokemonList() : [];
+
+    const owned = localState.pokedexOwned || data.pokedexOwnedFlags || new Array(pokedexSize + 1).fill(false);
+    const seen = localState.pokedexSeen || data.pokedexSeenFlags || new Array(pokedexSize + 1).fill(false);
     const sortBy = localState.pokedexSortBy;
     const search = localState.pokedexSearch.toLowerCase();
 
-    const ownedCount = owned.slice(1, 152).filter(Boolean).length;
-    const seenCount = seen.slice(1, 152).filter(Boolean).length;
+    const ownedCount = owned.slice(1, pokedexSize + 1).filter(Boolean).length;
+    const seenCount = seen.slice(1, pokedexSize + 1).filter(Boolean).length;
 
     let entries = [];
-    for (let i = 1; i <= 151; i++) {
-        const name = getPokemonName(i);
+    for (let i = 1; i <= pokedexSize; i++) {
+        const name = pokemonList[i] || `Pokémon #${i}`;
         if (search && !name.toLowerCase().includes(search) && !String(i).includes(search)) continue;
         entries.push({ dexId: i, name });
     }
@@ -47,7 +51,7 @@ export function render(data, appState, theme, eventBus, localState) {
     <div class="w-full">
         <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-800 p-6">
             ${sectionHeaderHTML('book', 'Pokédex', theme,
-                `<span class="text-xs text-gray-500 dark:text-gray-400 ml-2">Owned: <b class="text-green-600 dark:text-green-400">${ownedCount}</b>/151 | Seen: <b class="text-blue-600 dark:text-blue-400">${seenCount}</b>/151</span>`)}
+                `<span class="text-xs text-gray-500 dark:text-gray-400 ml-2">Owned: <b class="text-green-600 dark:text-green-400">${ownedCount}</b>/${pokedexSize} | Seen: <b class="text-blue-600 dark:text-blue-400">${seenCount}</b>/${pokedexSize}</span>`)}
             <!-- Controls -->
             <div class="flex flex-wrap items-center gap-2 mb-4">
                 <div class="relative flex-grow max-w-xs">

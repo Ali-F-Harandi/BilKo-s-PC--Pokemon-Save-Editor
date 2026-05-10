@@ -296,4 +296,133 @@ export class BaseAdapter {
     isValidFileSize(size) {
         return this.getValidFileSizes().includes(size);
     }
+
+    // ================================================================
+    // ---- BADGES & TRAINER ----
+    // ================================================================
+
+    /**
+     * Get the badge definitions for this generation.
+     * @returns {Array<{name: string, region: string}>}
+     */
+    getBadges() {
+        throw new Error(`getBadges() not implemented for ${this.generationName}`);
+    }
+
+    /**
+     * Get the trainer schema for this generation (fields for trainer card editing).
+     * @returns {Object} Schema object with sections and fields
+     */
+    getTrainerSchema() {
+        throw new Error(`getTrainerSchema() not implemented for ${this.generationName}`);
+    }
+
+    // ================================================================
+    // ---- TYPE DATA ----
+    // ================================================================
+
+    /**
+     * Get the type color map for this generation.
+     * @returns {Object<string, string>} Type name → hex color
+     */
+    getTypeColors() {
+        throw new Error(`getTypeColors() not implemented for ${this.generationName}`);
+    }
+
+    /**
+     * Get the type effectiveness chart for this generation.
+     * @returns {Object} Chart object
+     */
+    getTypeChart() {
+        throw new Error(`getTypeChart() not implemented for ${this.generationName}`);
+    }
+
+    /**
+     * Get the types for a specific Pokemon.
+     * @param {number} dexId - National Dex ID
+     * @returns {string[]} Type names
+     */
+    getPokemonTypes(dexId) {
+        throw new Error(`getPokemonTypes() not implemented for ${this.generationName}`);
+    }
+
+    // ================================================================
+    // ---- MOVE DATA ----
+    // ================================================================
+
+    /**
+     * Get the base PP for a move.
+     * @param {number} moveId - Move ID
+     * @returns {number} Base PP value
+     */
+    getMovePP(moveId) {
+        throw new Error(`getMovePP() not implemented for ${this.generationName}`);
+    }
+
+    // ================================================================
+    // ---- POKEDEX ----
+    // ================================================================
+
+    /**
+     * Get the Pokedex size (number of species) for this generation.
+     * @returns {number}
+     */
+    getPokedexSize() {
+        return this.getPokemonList().length - 1; // Subtract 1 for index 0 placeholder
+    }
+
+    // ================================================================
+    // ---- EXPERIENCE ----
+    // ================================================================
+
+    /**
+     * Get the growth rate for a Pokemon species.
+     * @param {number} dexId - National Dex ID
+     * @returns {string} Growth rate name
+     */
+    getGrowthRate(dexId) {
+        throw new Error(`getGrowthRate() not implemented for ${this.generationName}`);
+    }
+
+    /**
+     * Get the level from experience points.
+     * @param {number} exp - Experience points
+     * @param {string} rate - Growth rate name
+     * @returns {number} Level
+     */
+    getLevelFromExp(exp, rate) {
+        throw new Error(`getLevelFromExp() not implemented for ${this.generationName}`);
+    }
+
+    /**
+     * Get the experience required for a given level.
+     * @param {number} level - Pokemon level
+     * @param {string} rate - Growth rate name
+     * @returns {number} Required experience
+     */
+    getExpAtLevel(level, rate) {
+        throw new Error(`getExpAtLevel() not implemented for ${this.generationName}`);
+    }
+
+    /**
+     * Get the catch rate for a Pokemon species (Gen 1 specific, returns 0 for others).
+     * @param {number} dexId - National Dex ID
+     * @returns {number}
+     */
+    getCatchRate(dexId) {
+        return 0;
+    }
+
+    // ================================================================
+    // ---- SUPPORTED FEATURES ----
+    // ================================================================
+
+    /**
+     * Check if a feature is supported by this generation.
+     * @param {string} feature - Feature name ('heldItems', 'shiny', 'gender', 'abilities', 'natures', 'friendship', 'pokerus', 'eggSteps')
+     * @returns {boolean}
+     */
+    supportsFeature(feature) {
+        return false;
+    }
 }
