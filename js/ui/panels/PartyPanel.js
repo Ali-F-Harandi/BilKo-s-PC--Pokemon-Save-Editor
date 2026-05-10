@@ -4,11 +4,14 @@
  * Extracted from editorDashboard.js _renderHomeTab party section.
  * Renders 6 party slots with sprites, type badges, HP bars, drag/drop.
  * Supports selection highlighting via appState.getCurrentTabSelections().
+ *
+ * MODIFIED: Taller party cards with more vertical layout, bigger sprites,
+ * species + nickname display, type badges with icons and color.
  */
 
 import { Events } from '../../state/eventBus.js';
 import { getPokemonTypes } from '../../data/pokemonTypes.js';
-import { spriteUrl, typeBadgeHTML, hpBarHTML, matchesSearchFilter, _renderEmptySlot, sectionHeaderHTML } from '../editor/shared/helpers.js';
+import { spriteUrl, typeBadgeWithIconHTML, hpBarHTML, matchesSearchFilter, _renderEmptySlot, sectionHeaderHTML } from '../editor/shared/helpers.js';
 
 function _renderPartyCard(mon, index, isSelected) {
     if (!mon) return _renderEmptySlot('party', index);
@@ -18,16 +21,23 @@ function _renderPartyCard(mon, index, isSelected) {
         ? 'ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-900/30 shadow-lg shadow-blue-500/20'
         : 'bg-gray-50 dark:bg-gray-800';
 
+    // Show nickname if different from species name
+    const hasNickname = mon.nickname && mon.nickname !== mon.speciesName;
+    const nicknameHTML = hasNickname
+        ? `<div class="text-xs text-gray-500 dark:text-gray-400 italic">"${mon.nickname}"</div>`
+        : '';
+
     return `
-        <div class="${selectedClasses} rounded-xl p-3 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-all group"
+        <div class="${selectedClasses} rounded-xl p-4 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-all group min-h-[140px]"
              data-party-index="${index}" draggable="true"
              data-drag-source='${JSON.stringify({ type: 'party', index })}'>
-            <div class="flex items-start gap-2">
-                <img src="${spriteUrl_}" alt="${mon.speciesName}" class="w-12 h-12 pixelated group-hover:scale-110 transition-transform" onerror="this.style.display='none'">
-                <div class="flex-1 min-w-0">
-                    <div class="font-bold text-sm text-gray-900 dark:text-white truncate">${mon.nickname || mon.speciesName}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">Lv.${mon.level} ${mon.speciesName}</div>
-                    <div class="flex gap-1 mt-0.5">${types.map(t => typeBadgeHTML(t)).join('')}</div>
+            <div class="flex flex-col items-center text-center gap-2">
+                <img src="${spriteUrl_}" alt="${mon.speciesName}" class="w-16 h-16 pixelated group-hover:scale-110 transition-transform" onerror="this.style.display='none'">
+                <div class="flex-1 min-w-0 w-full">
+                    <div class="font-bold text-sm text-gray-900 dark:text-white truncate">${mon.speciesName}</div>
+                    ${nicknameHTML}
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Lv.${mon.level}</div>
+                    <div class="flex flex-wrap justify-center gap-1 mt-1">${types.map(t => typeBadgeWithIconHTML(t)).join('')}</div>
                 </div>
             </div>
             ${hpBarHTML(mon.hp, mon.maxHp)}
@@ -46,7 +56,7 @@ export function render(data, appState, theme, eventBus, localState) {
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-800 p-6">
         ${sectionHeaderHTML('heart', `Party (${data.party?.length || 0}/6)`, theme,
             `<span class="ml-auto bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs font-bold px-2 py-1 rounded-full">${data.party?.length || 0}</span>`)}
-        <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
             ${(data.party || []).map((mon, i) => {
                 const isSelected = selections.some(s => s.type === 'party' && s.index === i);
                 return matchesSearchFilter(mon) ? _renderPartyCard(mon, i, isSelected) : _renderEmptySlot('party', i);

@@ -6,6 +6,7 @@
  */
 
 import { TYPE_COLORS } from '../../../data/gameData.js';
+import { getTypeIcon } from '../../../data/typeIcons.js';
 import { getSearchFilter } from '../editorTools.js';
 
 // ================================================================
@@ -36,6 +37,16 @@ export function spriteUrl(dexId) {
 export function typeBadgeHTML(typeName) {
     const color = TYPE_COLORS[typeName] || '#999';
     return `<span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold text-white" style="background-color:${color}">${typeName}</span>`;
+}
+
+/**
+ * Type badge with icon and color — used for both party and PC box views.
+ * Shows a small SVG icon + type name on a colored background.
+ */
+export function typeBadgeWithIconHTML(typeName) {
+    const color = TYPE_COLORS[typeName] || '#999';
+    const icon = getTypeIcon(typeName);
+    return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold text-white" style="background-color:${color}">${icon}${typeName}</span>`;
 }
 
 export function typeDotsHTML(types) {
@@ -90,8 +101,9 @@ export function sectionHeaderHTML(icon, title, theme, extra = '') {
 }
 
 export function _renderEmptySlot(type, index) {
+    const extraClasses = type === 'party' ? 'min-h-[140px]' : 'aspect-square';
     return `
-        <div class="rounded-xl p-3 border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center min-h-[80px] text-gray-300 dark:text-gray-600 text-xs"
+        <div class="rounded-xl p-3 border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center ${extraClasses} text-gray-300 dark:text-gray-600 text-xs"
              data-${type}-index="${index}">
             Empty
         </div>`;
