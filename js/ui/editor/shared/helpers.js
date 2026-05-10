@@ -18,7 +18,6 @@ export const BADGE_SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/spri
 
 export const DASHBOARD_TABS = [
     { id: 'home',       label: 'Dashboard',   icon: 'home' },
-    { id: 'storage',    label: 'PC & Bag',     icon: 'layout-grid' },
     { id: 'encounters', label: 'Encounters',   icon: 'database' },
     { id: 'pokedex',    label: 'Pokédex',      icon: 'book' },
     { id: 'battle',     label: 'Battle Guide', icon: 'swords' },

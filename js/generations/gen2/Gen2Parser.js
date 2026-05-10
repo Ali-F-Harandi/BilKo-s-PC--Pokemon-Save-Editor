@@ -35,15 +35,16 @@ export class Gen2Parser {
         try {
             const view = uint8Array;
 
-            // Detect game version
+            // Detect game version first
             const gameVersion = this._detectGameVersion(view, filename);
 
-            // Validate checksums
-            const checksum1Valid = this._validateChecksum1(view);
-            const checksum2Valid = this._validateChecksum2(view);
-
-            if (!checksum1Valid && !checksum2Valid) {
+            // Validate checksums (using correct algorithm: plain 16-bit sum, NOT complement)
+            const checksumResult = this._validateChecksums(view, gameVersion);
+            if (!checksumResult.valid) {
                 return { success: false, error: 'Invalid checksums. This does not appear to be a valid Gen 2 save file.' };
+            }
+            if (checksumResult.checksum2Valid === false) {
+                console.warn('[Gen2Parser] Checksum 2 (box data) invalid — boxes may be corrupted.');
             }
 
             // Parse trainer info
@@ -77,7 +78,7 @@ export class Gen2Parser {
                 gameVersion: gameVersion,
                 originalFilename: filename,
                 fileSize: view.length,
-                isValid: checksum1Valid && checksum2Valid,
+                isValid: checksumResult.valid,
 
                 trainer: trainer,
 
@@ -172,37 +173,69 @@ export class Gen2Parser {
     }
 
     /**
-     * Validate checksum 1 (main save data region).
+     * Validate Gen 2 checksums using the correct algorithm (plain 16-bit sum).
+     * Gold/Silver and Crystal have DIFFERENT checksum positions and ranges.
+     * @param {Uint8Array} view
+     * @param {string} gameVersion - Detected game version
+     * @returns {{ valid: boolean, checksum2Valid: boolean|null }}
      * @private
      */
-    _validateChecksum1(view) {
-        let sum = 0;
-        for (let i = GEN2_OFFSETS.CHECKSUM_1_START; i <= GEN2_OFFSETS.CHECKSUM_1_END; i++) {
-            sum += view[i];
+    _validateChecksums(view, gameVersion) {
+        if (gameVersion === 'Crystal') {
+            // International Crystal: sum 0x2009-0x2B82, checksum at 0x2D0D
+            const ck1 = this._validateChecksumRange(view, 0x2009, 0x2B82, 0x2D0D);
+            if (ck1) {
+                // Crystal checksum 2: sum 0x1209-0x1D82, checksum at 0x1F0D
+                const ck2 = this._validateChecksumRange(view, 0x1209, 0x1D82, 0x1F0D);
+                return { valid: true, checksum2Valid: ck2 };
+            }
+            // Fallback: try Gold/Silver offsets too (game detection might be wrong)
+            const gsCk1 = this._validateChecksumRange(view, 0x2009, 0x2D68, 0x2D69);
+            if (gsCk1) {
+                return { valid: true, checksum2Valid: null };
+            }
+            return { valid: false, checksum2Valid: false };
+        } else {
+            // Gold/Silver: sum 0x2009-0x2D68, checksum at 0x2D69
+            const ck1 = this._validateChecksumRange(view, 0x2009, 0x2D68, 0x2D69);
+            if (ck1) {
+                // Gold/Silver checksum 2: sum 0x2D6E-0x7E6C, checksum at 0x7E6D
+                const ck2 = this._validateChecksumRange(view, 0x2D6E, 0x7E6C, 0x7E6D);
+                return { valid: true, checksum2Valid: ck2 };
+            }
+            // Fallback: try Crystal offsets (game detection might be wrong)
+            const cryCk1 = this._validateChecksumRange(view, 0x2009, 0x2B82, 0x2D0D);
+            if (cryCk1) {
+                return { valid: true, checksum2Valid: null };
+            }
+            // Fallback: try Japanese Gold/Silver offsets
+            const jpnCk1 = this._validateChecksumRange(view, 0x2009, 0x2C8B, 0x2D0D);
+            if (jpnCk1) {
+                return { valid: true, checksum2Valid: null };
+            }
+            return { valid: false, checksum2Valid: false };
         }
-        const calculated = (sum & 0xFFFF) >>> 0; // Gen 2 uses 16-bit checksum
-        // The checksum is stored as the complement
-        const storedLow = view[GEN2_OFFSETS.CHECKSUM_1];
-        const storedHigh = view[GEN2_OFFSETS.CHECKSUM_1 + 1];
-        const stored = ((storedHigh << 8) | storedLow) >>> 0;
-        const complement = ((~sum) & 0xFFFF) >>> 0;
-        return complement === stored;
     }
 
     /**
-     * Validate checksum 2 (box data region).
+     * Validate a checksum range using plain 16-bit sum (little-endian storage).
+     * @param {Uint8Array} view
+     * @param {number} start - Start offset (inclusive)
+     * @param {number} end - End offset (inclusive)
+     * @param {number} checksumOffset - Where the 2-byte checksum is stored
+     * @returns {boolean}
      * @private
      */
-    _validateChecksum2(view) {
+    _validateChecksumRange(view, start, end, checksumOffset) {
         let sum = 0;
-        for (let i = GEN2_OFFSETS.CHECKSUM_2_START; i <= GEN2_OFFSETS.CHECKSUM_2_END; i++) {
+        for (let i = start; i <= end; i++) {
             sum += view[i];
         }
-        const storedLow = view[GEN2_OFFSETS.CHECKSUM_2];
-        const storedHigh = view[GEN2_OFFSETS.CHECKSUM_2 + 1];
-        const stored = ((storedHigh << 8) | storedLow) >>> 0;
-        const complement = ((~sum) & 0xFFFF) >>> 0;
-        return complement === stored;
+        const calculated = (sum & 0xFFFF) >>> 0; // Plain 16-bit sum, NOT complement
+        const storedLow = view[checksumOffset];
+        const storedHigh = view[checksumOffset + 1];
+        const stored = ((storedHigh << 8) | storedLow) >>> 0; // Little-endian
+        return calculated === stored;
     }
 
     /**

@@ -3,19 +3,23 @@
  *
  * Extracted from editorDashboard.js _renderHomeTab party section.
  * Renders 6 party slots with sprites, type badges, HP bars, drag/drop.
+ * Supports selection highlighting via appState.getCurrentTabSelections().
  */
 
 import { Events } from '../../state/eventBus.js';
 import { getPokemonTypes } from '../../data/pokemonTypes.js';
 import { spriteUrl, typeBadgeHTML, hpBarHTML, matchesSearchFilter, _renderEmptySlot, sectionHeaderHTML } from '../editor/shared/helpers.js';
 
-function _renderPartyCard(mon, index) {
+function _renderPartyCard(mon, index, isSelected) {
     if (!mon) return _renderEmptySlot('party', index);
     const types = getPokemonTypes(mon.dexId);
     const spriteUrl_ = spriteUrl(mon.dexId);
+    const selectedClasses = isSelected
+        ? 'ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-900/30 shadow-lg shadow-blue-500/20'
+        : 'bg-gray-50 dark:bg-gray-800';
 
     return `
-        <div class="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-shadow group"
+        <div class="${selectedClasses} rounded-xl p-3 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-all group"
              data-party-index="${index}" draggable="true"
              data-drag-source='${JSON.stringify({ type: 'party', index })}'>
             <div class="flex items-start gap-2">
@@ -37,12 +41,16 @@ function _renderEmptyPartySlots(count) {
 }
 
 export function render(data, appState, theme, eventBus, localState) {
+    const selections = appState.getCurrentTabSelections();
     return `
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-800 p-6">
         ${sectionHeaderHTML('heart', `Party (${data.party?.length || 0}/6)`, theme,
             `<span class="ml-auto bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs font-bold px-2 py-1 rounded-full">${data.party?.length || 0}</span>`)}
         <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            ${(data.party || []).map((mon, i) => matchesSearchFilter(mon) ? _renderPartyCard(mon, i) : _renderEmptySlot('party', i)).join('')}
+            ${(data.party || []).map((mon, i) => {
+                const isSelected = selections.some(s => s.type === 'party' && s.index === i);
+                return matchesSearchFilter(mon) ? _renderPartyCard(mon, i, isSelected) : _renderEmptySlot('party', i);
+            }).join('')}
             ${_renderEmptyPartySlots(data.party?.length || 0)}
         </div>
     </div>`;

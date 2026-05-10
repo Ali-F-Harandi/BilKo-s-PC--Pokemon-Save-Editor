@@ -486,19 +486,35 @@ export function parsePk1(buffer) {
 
 // --- Main Parser Entry ---
 
-// Gen 2 checksum validation (added in Phase 3)
-function validateGen2Checksum1(view) {
+// Gen 2 checksum validation (fixed: uses plain 16-bit sum, NOT complement)
+// Gold/Silver and Crystal have DIFFERENT checksum positions and ranges.
+// Reference: pokecrystal disassembly, PKHeX SAV2.cs, Bulbapedia
+function validateGen2Checksum(view) {
+  // Try all known Gen 2 checksum configurations
+  // Return true if ANY configuration validates successfully
+
+  // International Gold/Silver: sum 0x2009-0x2D68, checksum at 0x2D69 (LE)
+  if (validateGen2ChecksumRange(view, 0x2009, 0x2D68, 0x2D69)) return true;
+
+  // International Crystal: sum 0x2009-0x2B82, checksum at 0x2D0D (LE)
+  if (validateGen2ChecksumRange(view, 0x2009, 0x2B82, 0x2D0D)) return true;
+
+  // Japanese Gold/Silver: sum 0x2009-0x2C8B, checksum at 0x2D0D (LE)
+  if (validateGen2ChecksumRange(view, 0x2009, 0x2C8B, 0x2D0D)) return true;
+
+  return false;
+}
+
+function validateGen2ChecksumRange(view, start, end, checksumOffset) {
   let sum = 0;
-  const start = 0x2009;
-  const end = 0x2D0C;
   for (let i = start; i <= end; i++) {
     sum += view[i];
   }
-  const complement = ((~sum) & 0xFFFF) >>> 0;
-  const storedLow = view[0x2D0D];
-  const storedHigh = view[0x2D0E];
-  const stored = ((storedHigh << 8) | storedLow) >>> 0;
-  return complement === stored;
+  const calculated = (sum & 0xFFFF) >>> 0; // Plain 16-bit sum, NOT complement
+  const storedLow = view[checksumOffset];
+  const storedHigh = view[checksumOffset + 1];
+  const stored = ((storedHigh << 8) | storedLow) >>> 0; // Little-endian
+  return calculated === stored;
 }
 
 export const detectAndParseSave = async (file) => {
@@ -511,26 +527,31 @@ export const detectAndParseSave = async (file) => {
     console.log(`[Parser] Analyzing: ${filename} (${size} bytes)`);
 
     // --- 32KB save files (Gen 1 or Gen 2) ---
-    if (size === 32768 || size === 32768 + 16) {
+    // Some .srm files have a 16-byte header prepended, making them 32784 bytes
+    let view32k = view;
+    if (size === 32768 + 16) {
+      // Strip the 16-byte header (used by some emulators/flash carts)
+      view32k = view.slice(16);
+    }
+
+    if (view32k.length === 32768) {
       // Try Gen 2 first — both Gen 1 and Gen 2 are 32KB, but different checksum algorithms
-      if (size === 32768) {
-        const isGen2Valid = validateGen2Checksum1(view);
-        if (isGen2Valid) {
-          // This is a Gen 2 save — defer to Gen2Adapter via SaveManager
-          console.log(`[Parser] Detected Gen 2 checksum. Routing to Gen2Adapter.`);
-          // Return a marker so AppState knows to use SaveManager for Gen 2
-          return {
-            success: true,
-            data: null,
-            _requiresGen2Adapter: true,
-            _rawData: view,
-            _filename: filename
-          };
-        }
+      const isGen2Valid = validateGen2Checksum(view32k);
+      if (isGen2Valid) {
+        // This is a Gen 2 save — defer to Gen2Adapter via SaveManager
+        console.log(`[Parser] Detected Gen 2 checksum. Routing to Gen2Adapter.`);
+        // Return a marker so AppState knows to use SaveManager for Gen 2
+        return {
+          success: true,
+          data: null,
+          _requiresGen2Adapter: true,
+          _rawData: view32k,
+          _filename: filename
+        };
       }
 
       // Try Gen 1 checksum
-      const isValid = validateGen1Checksum(view);
+      const isValid = validateGen1Checksum(view32k);
 
       if (!isValid) {
         return {
@@ -539,7 +560,7 @@ export const detectAndParseSave = async (file) => {
         };
       }
 
-      return { success: true, data: parseGen1Save(view, filename) };
+      return { success: true, data: parseGen1Save(view32k, filename) };
     }
 
     // Default error for any other file size

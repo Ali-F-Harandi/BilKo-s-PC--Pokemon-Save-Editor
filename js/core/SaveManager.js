@@ -33,15 +33,21 @@ export class SaveManager {
     async loadSaveFile(file) {
         try {
             const arrayBuffer = await file.arrayBuffer();
-            const uint8Array = new Uint8Array(arrayBuffer);
+            let uint8Array = new Uint8Array(arrayBuffer);
             const filename = file.name;
             const size = uint8Array.length;
 
-            console.log(`[SaveManager] Analyzing: ${filename} (${size} bytes)`);
+            // Handle .srm files with 16-byte headers (32784 bytes)
+            if (size === 32768 + 16) {
+                console.log(`[SaveManager] Detected 32784-byte file — stripping 16-byte header.`);
+                uint8Array = uint8Array.slice(16);
+            }
+
+            console.log(`[SaveManager] Analyzing: ${filename} (${size} bytes${size !== uint8Array.length ? `, stripped to ${uint8Array.length}` : ''})`);
 
             // Try Gen 2 first (same file size as Gen 1, need to distinguish)
             const gen2Adapter = this._factory.createForGeneration(2);
-            if (gen2Adapter && gen2Adapter.isValidFileSize(size)) {
+            if (gen2Adapter && gen2Adapter.isValidFileSize(uint8Array.length)) {
                 const gen2Validation = gen2Adapter.validateSaveFile(uint8Array);
                 if (gen2Validation.valid) {
                     const result = await gen2Adapter.parseSaveFile(uint8Array, filename);
@@ -61,7 +67,7 @@ export class SaveManager {
 
             // Try Gen 1
             const gen1Adapter = this._factory.createForGeneration(1);
-            if (gen1Adapter && gen1Adapter.isValidFileSize(size)) {
+            if (gen1Adapter && gen1Adapter.isValidFileSize(uint8Array.length)) {
                 const gen1Validation = gen1Adapter.validateSaveFile(uint8Array);
                 if (gen1Validation.valid) {
                     const result = await gen1Adapter.parseSaveFile(uint8Array);
@@ -82,7 +88,7 @@ export class SaveManager {
             // No adapter could parse this file
             return {
                 success: false,
-                error: `Unsupported File Format.\n\nBilKo's PC accepts Generation 1 (Red/Blue/Yellow) and Generation 2 (Gold/Silver/Crystal) Save Files (32KB .sav).\n\nDetected Size: ${size} bytes.`
+                error: `Unsupported File Format.\n\nBilKo's PC accepts Generation 1 (Red/Blue/Yellow) and Generation 2 (Gold/Silver/Crystal) Save Files (32KB .sav).\n\nDetected Size: ${size} bytes${size !== uint8Array.length ? ` (stripped to ${uint8Array.length})` : ''}.`
             };
         } catch (err) {
             console.error('[SaveManager Error]', err);

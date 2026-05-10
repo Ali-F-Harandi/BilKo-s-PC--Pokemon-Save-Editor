@@ -99,6 +99,10 @@ input[type=number] {
   0%, 100% { box-shadow: 0 0 5px rgba(59,130,246,0.3); }
   50% { box-shadow: 0 0 20px rgba(59,130,246,0.6), 0 0 40px rgba(59,130,246,0.2); }
 }
+@keyframes selectionPulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(59,130,246,0.6); }
+  50% { box-shadow: 0 0 8px 2px rgba(59,130,246,0.4); }
+}
 @keyframes slideTabIn {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -486,6 +490,13 @@ body.move-mode-active .pokemon-slot:hover {
 .pokemon-slot.selected {
   outline: 3px solid #3b82f6;
   outline-offset: -1px;
+}
+
+/* Selection highlight for party and box slots */
+[data-party-index].ring-2,
+[data-box-index].ring-2 {
+  animation: selectionPulse 2s ease-in-out infinite;
+  transition: all 0.2s ease;
 }
 
 /* ==============================================================

@@ -14,7 +14,6 @@ import { DASHBOARD_TABS } from './shared/helpers.js';
 
 // ---- Tab Module Imports ----
 import * as DashboardTab from './tabs/DashboardTab.js';
-import * as StorageTab from './tabs/StorageTab.js';
 import * as EncountersTab from './tabs/EncountersTab.js';
 import * as PokedexTab from './tabs/PokedexTab.js';
 import * as BattleTab from './tabs/BattleTab.js';
@@ -251,7 +250,6 @@ function _renderTabContent(view, appState, theme, eventBus) {
 
     switch (view) {
         case 'home':       return DashboardTab.render(data, appState, theme, eventBus, _localState);
-        case 'storage':    return StorageTab.render(data, appState, theme, eventBus, _localState);
         case 'encounters': return EncountersTab.render(data, appState, theme, eventBus, _localState);
         case 'pokedex':    return PokedexTab.render(data, appState, theme, eventBus, _localState);
         case 'battle':     return BattleTab.render(data, appState, theme, eventBus, _localState);
@@ -275,7 +273,6 @@ function _bindContentEvents(container, eventBus, theme, appState) {
 
     switch (view) {
         case 'home':       DashboardTab.bindEvents(container, eventBus, theme, appState, _localState, updateFn); break;
-        case 'storage':    StorageTab.bindEvents(container, eventBus, theme, appState, _localState, updateFn); break;
         case 'encounters': EncountersTab.bindEvents(container, eventBus, theme, appState, _localState, updateFn); break;
         case 'pokedex':    PokedexTab.bindEvents(container, eventBus, theme, appState, _localState, updateFn); break;
         case 'battle':     BattleTab.bindEvents(container, eventBus, theme, appState, _localState, updateFn); break;
