@@ -1,5 +1,5 @@
 /* ============================================================
-   BilKo's PC — Gen 1 Save Editor
+   BilKo's PC — Gen 1-2 Save Editor
    Custom Styles (ported from original index.html <style> block)
 
    Phase 5: Layout & Navigation additions:
@@ -463,6 +463,7 @@ body.move-mode-active .pokemon-slot:hover {
 .type-ghost   { background-color: #705898; }
 .type-dragon  { background-color: #7038F8; }
 .type-steel   { background-color: #B8B8D0; }
+.type-dark    { background-color: #705848; }
 .type-???     { background-color: #68A090; }
 
 /* ==============================================================

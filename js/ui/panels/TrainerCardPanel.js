@@ -25,6 +25,11 @@ function _renderTrainerDisplayFields(trainer, isYellow, data, adapter) {
         html += `<div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">Pikachu Friendship</span><span class="font-bold text-yellow-600 dark:text-yellow-400">${trainer.pikachuFriendship}</span></div>`;
     }
 
+    // Show gender for Gen2+ games
+    if (adapter && adapter.generationId >= 2 && trainer.gender) {
+        html += `<div class="flex justify-between"><span class="text-gray-500 dark:text-gray-400">Gender</span><span class="font-bold text-gray-900 dark:text-white">${trainer.gender}</span></div>`;
+    }
+
     return html;
 }
 
@@ -65,7 +70,28 @@ export function render(data, appState, theme, eventBus, localState) {
     const isEditing = localState.trainerEditing;
     const form = localState.trainerForm;
     const isYellow = data.gameVersion === 'Yellow';
+    const isGen2 = data.generationId === 2 || data.gameVersion === 'Gold' || data.gameVersion === 'Silver' || data.gameVersion === 'Crystal';
     const headerColor = gameHeaderColor(theme);
+    const gameTheme = theme?.getGameTheme?.();
+
+    // Use Gen2 trainer sprite for Gen2 games
+    const trainerSprite = isGen2
+        ? 'https://play.pokemonshowdown.com/sprites/trainers/ethan.png'
+        : TRAINER_SPRITE;
+
+    // Determine card border and body colors based on game
+    const isLightGame = isYellow || data.gameVersion === 'Gold' || data.gameVersion === 'Crystal';
+    const borderColor = isGen2
+        ? (data.gameVersion === 'Gold' ? 'border-amber-300 dark:border-amber-700'
+         : data.gameVersion === 'Silver' ? 'border-slate-300 dark:border-slate-700'
+         : 'border-cyan-300 dark:border-cyan-700')
+        : 'border-yellow-300 dark:border-yellow-700';
+    const bodyBg = isGen2
+        ? (data.gameVersion === 'Gold' ? 'bg-amber-50 dark:bg-amber-950'
+         : data.gameVersion === 'Silver' ? 'bg-slate-50 dark:bg-slate-950'
+         : 'bg-cyan-50 dark:bg-cyan-950')
+        : 'bg-yellow-50 dark:bg-yellow-950';
+    const headerTextCls = isLightGame ? 'text-gray-900' : 'text-white';
 
     // Get adapter for badge and pokedex info
     const adapter = appState?.getActiveAdapter?.() || null;
@@ -73,11 +99,11 @@ export function render(data, appState, theme, eventBus, localState) {
     const pokedexSize = adapter ? adapter.getPokedexSize() : 151;
 
     return `
-    <div class="rounded-2xl shadow-lg overflow-hidden border border-yellow-300 dark:border-yellow-700">
+    <div class="rounded-2xl shadow-lg overflow-hidden border ${borderColor}">
         <!-- Card Header -->
-        <div class="p-4 text-white" style="background:linear-gradient(135deg, ${headerColor}, ${headerColor}dd)">
+        <div class="p-4 ${headerTextCls}" style="background:linear-gradient(135deg, ${headerColor}, ${headerColor}dd)">
             <div class="flex items-center gap-3">
-                <img src="${TRAINER_SPRITE}" alt="Trainer" class="w-16 h-16 pixelated" onerror="this.style.display='none'">
+                <img src="${trainerSprite}" alt="Trainer" class="w-16 h-16 pixelated" onerror="this.style.display='none'">
                 <div>
                     <div class="font-black text-lg">${isEditing ? (form.name || trainer.name) : trainer.name}</div>
                     <div class="text-sm opacity-90 font-mono">ID: ${isEditing ? (form.id || trainer.id) : trainer.id}</div>
@@ -85,10 +111,10 @@ export function render(data, appState, theme, eventBus, localState) {
             </div>
         </div>
         <!-- Card Body -->
-        <div class="bg-yellow-50 dark:bg-yellow-950 p-4 space-y-2.5 text-sm">
+        <div class="${bodyBg} p-4 space-y-2.5 text-sm">
             ${isEditing ? _renderTrainerEditFields(form, trainer, isYellow, adapter) : _renderTrainerDisplayFields(trainer, isYellow, data, adapter)}
             <!-- Pokédex Progress -->
-            <div class="pt-2 border-t border-yellow-200 dark:border-yellow-800">
+            <div class="pt-2 border-t ${isGen2 ? 'border-gray-200 dark:border-gray-700' : 'border-yellow-200 dark:border-yellow-800'}">
                 <div class="text-xs font-bold text-gray-600 dark:text-gray-400 mb-1">Pokédex</div>
                 <div class="flex items-center gap-2 mb-1">
                     <span class="text-[10px] text-gray-500 w-12">Owned</span>
@@ -103,7 +129,7 @@ export function render(data, appState, theme, eventBus, localState) {
             </div>
             <!-- Badges -->
             ${badges.length > 0 ? `
-            <div class="pt-2 border-t border-yellow-200 dark:border-yellow-800">
+            <div class="pt-2 border-t ${isGen2 ? 'border-gray-200 dark:border-gray-700' : 'border-yellow-200 dark:border-yellow-800'}">
                 <div class="text-xs font-bold text-gray-600 dark:text-gray-400 mb-2">Badges</div>
                 <div class="grid grid-cols-4 gap-2" id="badge-grid">
                     ${badges.map((badge, i) => {

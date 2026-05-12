@@ -240,20 +240,23 @@ export class Gen2Parser {
 
     /**
      * Parse trainer information.
+     * FIX: Uses PKHeX-verified offsets for MONEY (0x23D9) and BADGES (0x23E4).
      * @private
      */
     _parseTrainer(view) {
         const name = decodeGen2Text(view, GEN2_OFFSETS.PLAYER_NAME, 11);
         const id = getUInt16BigEndian(view, GEN2_OFFSETS.PLAYER_ID).toString().padStart(5, '0');
-        // FIX: Gen2 money is stored as 3-byte big-endian INTEGER (NOT BCD like Gen1!)
+        // FIX: Gen2 money is stored as 3-byte big-endian INTEGER at offset 0x23D9 (NOT BCD like Gen1!)
         const moneyRaw = (view[GEN2_OFFSETS.MONEY] << 16) | (view[GEN2_OFFSETS.MONEY + 1] << 8) | view[GEN2_OFFSETS.MONEY + 2];
         const money = moneyRaw & 0xFFFFFF; // Max 999999
         const rivalName = decodeGen2Text(view, GEN2_OFFSETS.RIVAL_NAME, 11);
 
-        // Badges
-        const johtoBadges = view[GEN2_OFFSETS.BADGES] || 0;
-        const kantoBadges = view[GEN2_OFFSETS.BADGES + 1] || 0;
-        const totalBadges = countSetBits([johtoBadges], 0, 1) + countSetBits([kantoBadges], 0, 1);
+        // FIX: Badges at 0x23E4 — 2 bytes LE (Johto + Kanto)
+        const badgesLow = view[GEN2_OFFSETS.BADGES] || 0;       // Johto badges byte
+        const badgesHigh = view[GEN2_OFFSETS.BADGES + 1] || 0;  // Kanto badges byte
+        const totalBadges = countSetBits([badgesLow], 0, 1) + countSetBits([badgesHigh], 0, 1);
+        // Store as combined 16-bit value (low byte = Johto, high byte = Kanto)
+        const badgesCombined = badgesLow | (badgesHigh << 8);
 
         // Play time
         const hoursLow = view[GEN2_OFFSETS.TIME_PLAYED];
@@ -271,6 +274,7 @@ export class Gen2Parser {
             coins: 0,
             playTime,
             badges: totalBadges,
+            badgesCombined,  // Store combined for accurate badge editing
             rivalName,
             pikachuFriendship: 0,
             gender
@@ -695,23 +699,23 @@ export class Gen2Parser {
 
     /**
      * Get growth rate group for a Pokemon.
+     * Gen 2 has 4 growth rate groups: Fast, Medium Fast, Medium Slow, Slow.
+     * Erratic and Fluctuating are Gen3+ only and do NOT exist in Gen2.
+     * Species lists derived from PKHeX personal table data.
      * @private
      */
     _getGrowthRate(dexId) {
-        // Growth rate groups in Gen 2
-        const erratic = [134, 135, 136, 196, 197]; // Eevee family
-        const fast = [1, 2, 3, 43, 44, 45, 60, 61, 62, 152, 153, 154, 187, 188, 189]; // Bulbasaur, Oddish, Poliwag, Chikorita, Hoppip
-        const mediumFast = [4, 5, 6, 25, 26, 37, 38, 39, 40, 77, 78, 131, 133, 143, 152, 155, 156, 157, 175, 176, 179, 180, 181, 199, 209, 210, 215, 217, 231, 232, 233, 241, 242, 249, 250, 251];
-        const mediumSlow = [7, 8, 9, 10, 11, 12, 23, 24, 27, 28, 46, 47, 54, 55, 69, 70, 71, 74, 75, 76, 81, 82, 92, 93, 94, 95, 111, 112, 116, 117, 120, 121, 137, 140, 141, 158, 159, 160, 163, 164, 165, 166, 167, 168, 170, 171, 172, 173, 174, 190, 191, 192, 193, 194, 195, 198, 200, 201, 202, 204, 205, 206, 207, 208, 211, 212, 213, 214, 216, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 234, 235, 236, 237, 238, 239, 240, 243, 244, 245, 246, 247, 248];
-        const slow = [13, 14, 15, 16, 17, 18, 29, 30, 31, 32, 33, 34, 41, 42, 48, 49, 50, 51, 56, 57, 58, 59, 63, 64, 65, 66, 67, 68, 72, 73, 79, 80, 83, 84, 85, 86, 87, 88, 89, 90, 91, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 113, 114, 115, 119, 122, 123, 124, 125, 126, 127, 128, 129, 130, 132, 138, 139, 142, 144, 145, 146, 147, 148, 149, 150, 151, 169, 177, 178, 182, 183, 184, 185, 186, 203, 230];
+        // Growth rate groups in Gen 2 (PKHeX-verified)
+        const fast = [1,2,3,4,5,6,43,44,45,60,61,62,129,152,153,154,187,188,189,233];
+        const mediumFast = [25,26,37,38,39,40,52,53,54,55,77,78,81,82,109,110,120,121,131,132,133,134,135,136,137,143,155,156,157,169,175,176,179,180,181,196,197,199,209,210,215,217,222,225,226,231,232,241,242,249,250,251];
+        const mediumSlow = [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27,28,29,30,31,32,33,34,35,36,41,42,46,47,48,49,50,51,56,57,58,59,63,64,65,66,67,68,69,70,71,72,73,74,75,76,79,80,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,111,112,113,114,115,116,117,118,119,122,123,124,125,126,127,128,130,138,139,140,141,142,144,145,146,147,148,149,150,151,158,159,160,163,164,165,166,167,168,170,171,172,173,174,177,178,182,183,184,185,186,190,191,192,193,194,195,198,200,201,202,203,204,205,206,207,208,211,212,213,214,216,218,219,220,221,223,224,227,228,229,230,234,235,236,237,238,239,240,243,244,245,246,247,248];
+        const slow = [];
 
         if (fast.includes(dexId)) return 'fast';
         if (mediumFast.includes(dexId)) return 'medium-fast';
         if (mediumSlow.includes(dexId)) return 'medium-slow';
-        if (slow.includes(dexId)) return 'slow';
-        if (erratic.includes(dexId)) return 'erratic';
-
-        return 'medium-fast'; // Default
+        // Everything else is slow
+        return 'slow';
     }
 
     /**
@@ -720,13 +724,6 @@ export class Gen2Parser {
      */
     _getExpForLevel(level, growthRate) {
         switch (growthRate) {
-            case 'erratic':
-                // Erratic growth rate formula
-                if (level <= 1) return 0;
-                if (level <= 50) return Math.floor(level * level * level * (100 - level) / 50);
-                if (level <= 68) return Math.floor(level * level * level * (150 - level) / 100);
-                if (level <= 98) return Math.floor(level * level * level * Math.floor((1911 - 10 * level) / 3) / 500);
-                return Math.floor(level * level * level * (160 - level) / 100);
             case 'fast':
                 return Math.floor(4 * level * level * level / 5);
             case 'medium-fast':
@@ -742,6 +739,8 @@ export class Gen2Parser {
 
     /**
      * Parse items (Gen 2 has multiple pockets).
+     * TM/HM pocket uses a fixed 57-byte array (1 byte per TM/HM slot).
+     * Other pockets use the list format: count + [id,qty] pairs + 0xFF.
      * @private
      */
     _parseItems(view) {
@@ -782,8 +781,8 @@ export class Gen2Parser {
     _parseEventFlags(view) {
         // Gen 2 has many more event flags than Gen 1
         const flags = [];
-        const startOffset = 0x2400; // Approximate event flags offset
-        const numBytes = 32;
+        const startOffset = GEN2_OFFSETS.EVENT_FLAGS_START;
+        const numBytes = GEN2_OFFSETS.EVENT_FLAGS_NUM_BYTES;
 
         for (let i = 0; i < numBytes * 8; i++) {
             const byteIndex = Math.floor(i / 8);

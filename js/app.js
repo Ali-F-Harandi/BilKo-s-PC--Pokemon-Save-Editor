@@ -27,6 +27,7 @@
 import { EventBus, Events } from './state/eventBus.js';
 import { ThemeManager } from './state/theme.js';
 import { AppState } from './state/appState.js';
+import { setSharedAdapterFactory } from './state/appState.js';
 import { EditorState } from './state/editorState.js';
 
 // ---- Phase 1: Multi-Generation Architecture ----
@@ -76,6 +77,9 @@ export const saveManager = new SaveManager(adapterFactory);
 // Convenience: Get adapters for each registered generation
 export const gen1Adapter = adapterFactory.createForGeneration(1);
 export const gen2Adapter = adapterFactory.createForGeneration(2);
+
+// FIX: Share the AdapterFactory instance with AppState to avoid dual-instantiation
+setSharedAdapterFactory(adapterFactory);
 
 // ---- UI Extension Registration removed ----
 // Gen-specific fields are now handled via adapter.getPokemonSchema() and
@@ -625,7 +629,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Log architecture info
     console.log('[BilKo\'s PC] Multi-Generation Save Editor initialized.');
-    console.log(`[BilKo\'s PC] Phase 3: Adapter Factory + SaveManager online.`);
+    console.log(`[BilKo\'s PC] Gen 1-2 Adapter Factory + SaveManager online.`);
     console.log(`[BilKo\'s PC] Registered generations: [${generationRegistry.getRegisteredGenerations().join(', ')}]`);
     console.log(`[BilKo\'s PC] Registered games: [${generationRegistry.getRegisteredGames().join(', ')}]`);
     console.log(`[BilKo\'s PC] Gen1Adapter available: ${gen1Adapter !== null}`);

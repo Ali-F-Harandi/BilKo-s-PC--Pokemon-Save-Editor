@@ -6,6 +6,7 @@
  * and a Real-Time Clock (RTC) system.
  * 
  * VERIFIED against PKHeX reverse engineering analysis.
+ * All offsets are ABSOLUTE file offsets (not section-relative).
  * 
  * Save file sizes:
  *   International (Gold/Silver/Crystal): 32768 bytes (0x8000)
@@ -15,66 +16,80 @@
 
 export const GEN2_OFFSETS = {
     // --- Trainer Info ---
-    PLAYER_NAME: 0x200B,
-    PLAYER_ID: 0x2009,
-    MONEY: 0x200F,         // 3 bytes big-endian integer (NOT BCD!)
-    RIVAL_NAME: 0x2021,
-    DAYLIGHT_SAVINGS: 0x202E,
-    TIME_PLAYED: 0x2053,   // 5 bytes (hours LSB, hours MSB, minutes, seconds, frames)
-    PHONE_LIST: 0x2067,
-    BADGES: 0x2425,        // Johto badges byte + Kanto badges byte
-    PLAYER_GENDER: 0x3E3D, // Crystal only: 0x00 = Male, 0x01 = Female
-    
-    // --- Options ---
-    OPTIONS: 0x2079,
+    OPTIONS: 0x2000,         // 1 byte (battle effects, text speed, etc.)
+    PLAYER_ID: 0x2009,       // 2 bytes big-endian
+    PLAYER_NAME: 0x200B,     // 8 chars + 0x50 terminator (INT), 6 chars (JPN)
+    RIVAL_NAME: 0x2021,      // Same format as player name
+    DAYLIGHT_SAVINGS: 0x2042,// 1 byte (RTC DST flag)
     
     // --- RTC ---
-    RTC_HOURS: 0x204D,     // 2 bytes little-endian
-    RTC_DAYS: 0x2051,      // 2 bytes (day count, used for time-based events)
+    RTC_HOURS: 0x204D,       // 2 bytes little-endian
+    RTC_DAYS: 0x2051,        // 2 bytes (day count, used for time-based events)
     
-    // --- Pokedex ---
-    POKEDEX_OWNED: 0x2427, // 32 bytes (251 bits + padding)
-    POKEDEX_SEEN: 0x2447,  // 32 bytes (251 bits + padding)
+    // --- Time ---
+    TIME_PLAYED: 0x2053,     // 5 bytes (hours LSB, hours MSB, minutes, seconds, frames)
+    
+    // --- Phone List (GSC) ---
+    PHONE_LIST: 0x2067,
+    
+    // --- Map Data ---
+    MAP_ID: 0x207E,
+    
+    // --- Money (CRITICAL: offset was 0x200F before, now corrected to PKHeX-verified 0x23D9) ---
+    MONEY: 0x23D9,           // 3 bytes big-endian integer (NOT BCD!)
+    
+    // --- Badges (CRITICAL: offset was 0x2425 before, now corrected to PKHeX-verified 0x23E4) ---
+    BADGES: 0x23E4,          // 2 bytes LE: Johto badges byte + Kanto badges byte
     
     // --- Items ---
-    BAG_ITEMS: 0x247D,     // Bag pocket (20 slots, count byte + pairs of id/count)
-    BALL_ITEMS: 0x24A7,    // Ball pocket (12 slots) - GSC only
-    KEY_ITEMS: 0x24BF,     // Key items pocket (25 slots) - GSC only
-    TM_HM_ITEMS: 0x24F5,   // TM/HM pocket (57 slots) - GSC only
-    PC_ITEMS: 0x254D,      // PC items (50 slots)
+    // TM/HM pocket comes first (fixed 57-byte array, one byte per TM/HM slot)
+    TM_HM_ITEMS: 0x23E6,    // 57 bytes (index = TM#; value = quantity, 0 = none)
+    // Bag pocket (item pouch)
+    BAG_ITEMS: 0x241F,       // Bag pocket (20 slots, count byte + pairs of id/count)
+    BALL_ITEMS: 0x2449,      // Ball pocket (12 slots) - GSC only
+    KEY_ITEMS: 0x2463,       // Key items pocket (25 slots) - GSC only
+    PC_ITEMS: 0x2485,        // PC items (50 slots)
     
-    // --- Party ---
-    PARTY_COUNT: 0x2563,
-    PARTY_SPECIES: 0x2564, // 6 species bytes + 0xFF terminator
-    PARTY_OT_NAMES: 0x256B, // 6 * 11 bytes (name length 10 + term)
-    PARTY_NICKNAMES: 0x25AD, // 6 * 11 bytes
-    PARTY_STRUCTS: 0x25EF,  // 6 * 48 bytes (party Pokemon struct)
+    // --- Event Flags ---
+    EVENT_FLAGS_START: 0x23E0, // Verified event flags start offset
+    EVENT_FLAGS_NUM_BYTES: 32,
+    
+    // --- PokeList2 Party Format (CRITICAL: party was at 0x2563 before, now corrected to PKHeX-verified 0x288A) ---
+    // PokeList2: [count(1)] [species(6+FF=7)] [bodies(6×48)] [OT(6×11)] [nicks(6×11)]
+    PARTY_COUNT: 0x288A,
+    PARTY_SPECIES: 0x288B,     // 6 species bytes + 0xFF terminator
+    PARTY_STRUCTS: 0x2892,     // 6 * 48 bytes (party Pokemon struct)
+    PARTY_OT_NAMES: 0x29B2,    // 6 * 11 bytes (OT name length 10 + term)
+    PARTY_NICKNAMES: 0x29F4,   // 6 * 11 bytes
     
     // --- Pokemon Struct Sizes ---
     PARTY_MON_SIZE: 48,
     BOX_MON_SIZE: 32,
     
+    // --- Pokedex (CRITICAL: offsets were 0x2427/0x2447 before, now corrected) ---
+    POKEDEX_OWNED: 0x2A4C,  // 32 bytes (251 bits + padding)
+    POKEDEX_SEEN: 0x2A6C,   // 32 bytes (251 bits + padding) — derived: 0x2A4C + 32
+    
     // --- PC Boxes ---
-    CURRENT_BOX: 0x2707,
-    BOX_NAMES: 0x2708,    // 14 * 9 bytes (8 char name + term)
+    CURRENT_BOX: 0x2724,     // 1 byte (bit7=initialized, bits0-6=box number)
+    BOX_NAMES: 0x2725,       // 14 * 9 bytes (8 char name + term)
     
     // Box data layout in save:
-    // Box 1: 0x2756 (current box)
-    // Boxes 2-7: Bank 0x4000-0x5FFF
-    // Boxes 8-14: Bank 0x6000-0x7FFF
-    CURRENT_BOX_DATA: 0x2756,
-    BOX_BANK_1: 0x4000,   // Boxes 2-7 (6 boxes)
-    BOX_BANK_2: 0x6000,   // Boxes 8-14 (7 boxes)
+    // Current box is at CURRENT_BOX_DATA
+    // Other boxes are in two banks
+    CURRENT_BOX_DATA: 0x2773,
+    BOX_BANK_1: 0x4000,     // Boxes 2-7 (6 boxes)
+    BOX_BANK_2: 0x6000,     // Boxes 8-14 (7 boxes)
     
     BOX_STRUCT_SIZE: 0x20 + (20 * 32) + (20 * 11) + (20 * 11),
     // Each box: species list (21 bytes: 20 species + FF term) + 20 structs (32 bytes each) + 20 OT names (11 bytes each) + 20 nicknames (11 bytes each)
     
     // --- Daycare ---
     DAYCARE_IN_USE: 0x2D4B,
-    DAYCARE_MON: 0x2D4C,    // 32 bytes box format
-    DAYCARE_OT: 0x2D6C,     // 11 bytes
-    DAYCARE_NICK: 0x2D77,   // 11 bytes
-    DAYCARE_STEPS: 0x2D82,  // 4 bytes
+    DAYCARE_MON: 0x2D4C,     // 32 bytes box format
+    DAYCARE_OT: 0x2D6C,      // 11 bytes
+    DAYCARE_NICK: 0x2D77,    // 11 bytes
+    DAYCARE_STEPS: 0x2D82,   // 4 bytes
     
     // --- Checksums (Game Variant Specific) ---
     // Default: Crystal International. See GEN2_CHECKSUM_VARIANTS for per-game offsets.
@@ -87,24 +102,18 @@ export const GEN2_OFFSETS = {
     CHECKSUM_2_START: 0x1209,
     CHECKSUM_2_END: 0x1D82,
     
-    // --- Map Data ---
-    MAP_ID: 0x207E,
+    // --- Crystal-specific ---
+    PLAYER_GENDER: 0x3E3D,   // Crystal only: 0x00 = Male, 0x01 = Female
+    MOBILE_PHONE: 0x2581,
     
     // --- Hall of Fame ---
-    HALL_OF_FAME: 0x0C6D,  // In a different bank
+    HALL_OF_FAME: 0x0C6D,   // In a different bank
     
     // --- Encryption ---
     SAVE_ENCRYPTION_KEY: 0x0F51, // Used for some Crystal data
     
-    // --- Crystal-specific ---
-    MOBILE_PHONE: 0x2581,
-    
     // --- Game Title Offsets ---
     GAME_TITLE_OFFSET: 0x134,
-    
-    // --- Event Flags ---
-    EVENT_FLAGS_START: 0x2400,
-    EVENT_FLAGS_NUM_BYTES: 32,
 };
 
 /**

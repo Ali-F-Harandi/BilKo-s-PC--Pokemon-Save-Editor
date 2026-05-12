@@ -123,6 +123,7 @@ export class Gen2Writer {
 
     /**
      * Write trainer info to the save buffer.
+     * FIX: Uses PKHeX-verified offsets for MONEY (0x23D9) and BADGES (0x23E4).
      * @private
      */
     _writeTrainer(view, save) {
@@ -140,7 +141,7 @@ export class Gen2Writer {
             view[GEN2_OFFSETS.RIVAL_NAME + i] = rivalBytes[i] || 0x50;
         }
 
-        // FIX: Gen2 money is stored as a 3-byte big-endian INTEGER (NOT BCD!)
+        // FIX: Gen2 money is stored as a 3-byte big-endian INTEGER at offset 0x23D9 (NOT BCD!)
         const money = Math.min(trainer.money || 0, 999999);
         const moneyVal = money; // Direct integer value
         view[GEN2_OFFSETS.MONEY] = (moneyVal >> 16) & 0xFF;
@@ -152,10 +153,12 @@ export class Gen2Writer {
         view[GEN2_OFFSETS.PLAYER_ID] = (id >> 8) & 0xFF;
         view[GEN2_OFFSETS.PLAYER_ID + 1] = id & 0xFF;
 
-        // Badges
-        const totalBadges = Math.min(trainer.badges || 0, 16);
-        view[GEN2_OFFSETS.BADGES] = totalBadges & 0xFF; // Johto badges
-        view[GEN2_OFFSETS.BADGES + 1] = (totalBadges > 8) ? (totalBadges - 8) & 0xFF : 0; // Kanto badges
+        // FIX: Badges at 0x23E4 — 2 bytes LE (Johto + Kanto)
+        const totalBadges = trainer.badges || 0;
+        // If badgesCombined is available, use it for accurate 2-byte storage
+        const badgesCombined = trainer.badgesCombined || totalBadges;
+        view[GEN2_OFFSETS.BADGES] = badgesCombined & 0xFF;          // Johto badges
+        view[GEN2_OFFSETS.BADGES + 1] = (badgesCombined >> 8) & 0xFF; // Kanto badges
 
         // Party count
         const partyCount = save.party ? save.party.length : 0;
@@ -355,10 +358,11 @@ export class Gen2Writer {
         view[offset + struct.POKERUS] = pokemon.genExtension?.pokerus || 0;
 
         // Caught Data (Crystal only, offset 0x1D-0x1E)
+        // FIX: Must write big-endian to match parser (getUInt16BigEndian reads high byte first)
         if (pokemon.genExtension?.caughtData !== undefined) {
             const caughtData = pokemon.genExtension.caughtData;
-            view[offset + struct.CAUGHT_DATA] = caughtData & 0xFF;
-            view[offset + struct.CAUGHT_DATA + 1] = (caughtData >> 8) & 0xFF;
+            view[offset + struct.CAUGHT_DATA] = (caughtData >> 8) & 0xFF;     // High byte first (big-endian)
+            view[offset + struct.CAUGHT_DATA + 1] = caughtData & 0xFF;        // Low byte second
         }
 
         // Party-only fields

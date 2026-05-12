@@ -20,19 +20,34 @@
 import { Events } from './eventBus.js';
 import { detectAndParseSave } from '../engine/parser.js';
 import { writeGen1Save } from '../engine/writer.js';
-import { GenerationRegistry } from '../core/GenerationRegistry.js';
-import { AdapterFactory } from '../core/AdapterFactory.js';
 import { transferPokemonBatch, movePokemonBatch, isSameLocation } from '../engine/manipulation.js';
 import { sortPCBoxes } from '../engine/sortManager.js';
 
-// AdapterFactory instance (shared across app)
-let _adapterFactory = null;
+// FIX: Use a single shared AdapterFactory instead of creating a separate one here.
+// The app.js creates the canonical instance. We use a module-level singleton
+// to avoid dual-instantiation issues and cache duplication.
+import { GenerationRegistry } from '../core/GenerationRegistry.js';
+import { AdapterFactory } from '../core/AdapterFactory.js';
+
+let _sharedRegistry = null;
+let _sharedAdapterFactory = null;
+
 function getAdapterFactory() {
-    if (!_adapterFactory) {
-        const registry = new GenerationRegistry();
-        _adapterFactory = new AdapterFactory(registry);
+    if (!_sharedAdapterFactory) {
+        if (!_sharedRegistry) {
+            _sharedRegistry = new GenerationRegistry();
+        }
+        _sharedAdapterFactory = new AdapterFactory(_sharedRegistry);
     }
-    return _adapterFactory;
+    return _sharedAdapterFactory;
+}
+
+/**
+ * Set the shared AdapterFactory instance (called from app.js to avoid duplicates).
+ * @param {AdapterFactory} factory
+ */
+export function setSharedAdapterFactory(factory) {
+    _sharedAdapterFactory = factory;
 }
 
 /**

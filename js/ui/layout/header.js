@@ -68,7 +68,13 @@ export function initHeader(container, eventBus, theme, appState) {
 function _render(container, eventBus, theme, appState) {
     const gameTheme = theme.getGameTheme();
     const isYellow = gameTheme?.id === 'yellow';
+    const isGold = gameTheme?.id === 'gold';
+    const isSilver = gameTheme?.id === 'silver';
+    const isCrystal = gameTheme?.id === 'crystal';
     const hasActiveSave = !!appState.getActiveTabId();
+
+    // Games with light text color need dark text on the header
+    const needsDarkText = isYellow || isGold || isCrystal;
 
     // Dynamic style classes based on game version
     const headerBgClass = gameTheme
@@ -79,11 +85,11 @@ function _render(container, eventBus, theme, appState) {
         ? `background-color: ${gameTheme.color};`
         : '';
 
-    const textColor = isYellow ? 'text-gray-900' : 'text-white';
-    const iconColor = isYellow ? 'text-yellow-500' : 'text-red-600';
-    const borderColor = isYellow ? 'border-gray-900' : 'border-gray-800';
-    const hoverBg = isYellow ? 'hover:bg-black/10' : 'hover:bg-white/10';
-    const badgeBg = isYellow ? 'bg-black/10' : 'bg-black/20';
+    const textColor = needsDarkText ? 'text-gray-900' : 'text-white';
+    const iconColor = needsDarkText ? 'text-yellow-500' : 'text-red-600';
+    const borderColor = needsDarkText ? 'border-gray-900' : 'border-gray-800';
+    const hoverBg = needsDarkText ? 'hover:bg-black/10' : 'hover:bg-white/10';
+    const badgeBg = needsDarkText ? 'bg-black/10' : 'bg-black/20';
 
     container.innerHTML = `
         <header class="sticky top-0 z-50 w-full shadow-md transition-colors duration-500 ${headerBgClass} ${textColor}"
@@ -105,7 +111,7 @@ function _render(container, eventBus, theme, appState) {
                 <!-- Actions Area -->
                 <div class="flex items-center space-x-2 sm:space-x-4">
                     <div class="hidden sm:flex items-center px-3 py-1 rounded text-xs font-mono opacity-80 ${badgeBg}">
-                        v1.1.0-alpha
+                        v1.2.0-alpha
                     </div>
 
                     <!-- Dark Mode Toggle -->
@@ -252,7 +258,7 @@ function _openSidebar(container, eventBus, theme, appState, hasActiveSave, hover
                     </div>
                     <div>
                         <h5 class="font-bold text-gray-900 dark:text-white text-sm">BilKo's PC</h5>
-                        <p class="text-xs text-gray-500">Gen 1 Save Editor</p>
+                        <p class="text-xs text-gray-500">Gen 1-2 Save Editor</p>
                     </div>
                 </div>
             </div>

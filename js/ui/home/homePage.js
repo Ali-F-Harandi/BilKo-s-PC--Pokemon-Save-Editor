@@ -175,13 +175,15 @@ function renderHero() {
 
                 <!-- Subtitle -->
                 <p class="mt-3 sm:mt-4 text-lg sm:text-xl text-gray-500 dark:text-gray-400 text-center max-w-xl">
-                    The ultimate Gen 1 Save Editor.
+                    The ultimate Gen 1-2 Save Editor.
                 </p>
 
                 <!-- File format badges -->
                 <div class="mt-3 flex items-center gap-2">
                     <span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-0.5 text-sm font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">.sav</span>
                     <span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-0.5 text-sm font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">.srm</span>
+                    <span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-0.5 text-sm font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">.pk1</span>
+                    <span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-0.5 text-sm font-semibold text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">.pk2</span>
                 </div>
 
                 <!-- Guardians: Charizard (left) + Blastoise (right) -->
