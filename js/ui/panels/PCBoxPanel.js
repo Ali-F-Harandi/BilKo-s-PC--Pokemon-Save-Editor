@@ -4,14 +4,11 @@
  * Extracted from editorDashboard.js _renderStorageTab PC section.
  * Renders 20 box slots with navigation header, drag/drop.
  * Supports selection highlighting via appState.getCurrentTabSelections().
- *
- * MODIFIED: Square slots with aspect-ratio 1/1, species name + nickname,
- * type badges with icons and color.
  */
 
 import { Events } from '../../state/eventBus.js';
 import { getPokemonTypes } from '../../data/pokemonTypes.js';
-import { spriteUrl, typeBadgeWithIconHTML, matchesSearchFilter } from '../editor/shared/helpers.js';
+import { spriteUrl, typeDotsHTML, matchesSearchFilter } from '../editor/shared/helpers.js';
 import * as PCBoxNavigator from './PCBoxNavigator.js';
 
 function _renderBoxSlot(mon, index, selectedBox, isSelected) {
@@ -20,27 +17,20 @@ function _renderBoxSlot(mon, index, selectedBox, isSelected) {
         ? 'ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-900/30 shadow-lg shadow-blue-500/20'
         : 'bg-gray-50 dark:bg-gray-800';
 
-    // Show nickname if different from species name
-    const hasNickname = mon.nickname && mon.nickname !== mon.speciesName;
-    const nicknameHTML = hasNickname
-        ? `<div class="text-[9px] text-gray-400 dark:text-gray-500 italic truncate">"${mon.nickname}"</div>`
-        : '';
-
     return `
-        <div class="${selectedClasses} rounded-lg p-1.5 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-all text-center aspect-square flex flex-col items-center justify-center"
+        <div class="${selectedClasses} rounded-lg p-2 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-all text-center"
              data-box-index="${index}" draggable="true"
              data-drag-source='${JSON.stringify({ type: 'box', boxIndex: selectedBox, index })}'>
-            <img src="${spriteUrl(mon.dexId)}" alt="${mon.speciesName}" class="w-10 h-10 mx-auto pixelated flex-shrink-0" onerror="this.style.display='none'">
-            <div class="font-bold text-[10px] text-gray-900 dark:text-white truncate mt-0.5 w-full leading-tight">${mon.speciesName}</div>
-            ${nicknameHTML}
-            <div class="text-[9px] text-gray-400">Lv.${mon.level}</div>
-            <div class="flex flex-wrap justify-center gap-0.5 mt-0.5">${types.map(t => typeBadgeWithIconHTML(t)).join('')}</div>
+            <img src="${spriteUrl(mon.dexId)}" alt="${mon.speciesName}" class="w-10 h-10 mx-auto pixelated" onerror="this.style.display='none'">
+            <div class="font-bold text-[11px] text-gray-900 dark:text-white truncate mt-0.5">${mon.nickname || mon.speciesName}</div>
+            <div class="text-[10px] text-gray-400">Lv.${mon.level}</div>
+            <div class="flex justify-center gap-0.5 mt-0.5">${typeDotsHTML(types)}</div>
         </div>`;
 }
 
 function _renderEmptyBoxSlot(index) {
     return `
-        <div class="rounded-lg p-1.5 border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center aspect-square text-gray-300 dark:text-gray-600 text-xs"
+        <div class="rounded-lg p-2 border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center min-h-[70px] text-gray-300 dark:text-gray-600 text-xs"
              data-box-index="${index}">
         </div>`;
 }

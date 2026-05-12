@@ -245,7 +245,9 @@ export class Gen2Parser {
     _parseTrainer(view) {
         const name = decodeGen2Text(view, GEN2_OFFSETS.PLAYER_NAME, 11);
         const id = getUInt16BigEndian(view, GEN2_OFFSETS.PLAYER_ID).toString().padStart(5, '0');
-        const money = parseBCD(view, GEN2_OFFSETS.MONEY, 3);
+        // FIX: Gen2 money is stored as 3-byte big-endian INTEGER (NOT BCD like Gen1!)
+        const moneyRaw = (view[GEN2_OFFSETS.MONEY] << 16) | (view[GEN2_OFFSETS.MONEY + 1] << 8) | view[GEN2_OFFSETS.MONEY + 2];
+        const money = moneyRaw & 0xFFFFFF; // Max 999999
         const rivalName = decodeGen2Text(view, GEN2_OFFSETS.RIVAL_NAME, 11);
 
         // Badges
@@ -467,14 +469,29 @@ export class Gen2Parser {
         // HP DV is derived from other DVs
         const hpDv = ((atkDv & 1) << 3) | ((defDv & 1) << 2) | ((spdDv & 1) << 1) | (spcDv & 1);
 
-        // Pokerus
-        const pokerus = view[offset + struct.POKERUS] & 0x0F;
+        // FIX: PP + PP Ups at offset 0x17-0x1A (4 bytes)
+        // Each byte: bits 5-0 = current PP, bits 7-6 = PP Ups count
+        // This was previously INCORRECTLY claimed to be "not stored" — it IS stored!
+        const ppUpsBytes = [
+            view[offset + struct.PP_UPS],
+            view[offset + struct.PP_UPS + 1],
+            view[offset + struct.PP_UPS + 2],
+            view[offset + struct.PP_UPS + 3]
+        ];
 
-        // Friendship
+        // FIX: Friendship at offset 0x1B (was incorrectly at 0x18)
         const friendship = view[offset + struct.FRIENDSHIP];
 
-        // Egg steps (only meaningful for eggs)
-        const eggSteps = getUInt16BigEndian(view, offset + struct.EGG_STEPS);
+        // FIX: Pokerus at offset 0x1C (was incorrectly at 0x17)
+        const pokerusByte = view[offset + struct.POKERUS];
+        const pokerus = pokerusByte; // Full byte: high nibble = strain, low nibble = days
+
+        // Caught Data (Crystal only, offset 0x1D-0x1E)
+        const caughtData = getUInt16BigEndian(view, offset + struct.CAUGHT_DATA);
+
+        // Egg steps not a separate field — friendship+caughtData overlap for non-eggs
+        const isEggMon = speciesId === GEN2_EGG_SPECIES_ID;
+        const eggSteps = isEggMon ? 0 : 0; // Egg steps stored differently in PokeList
 
         // Shiny check
         const isShiny = defDv === GEN2_SHINY_STAT_DV &&
@@ -532,12 +549,14 @@ export class Gen2Parser {
         const speciesName = isEgg ? 'Egg' : (GEN2_POKEMON_NAMES[dexId] || '???');
         const isNicknamed = nickname !== '' && nickname !== speciesName;
 
-        // PP and PP Ups
-        // In Gen 2, PP/PPUps are not stored in the Pokemon struct directly
-        // They are calculated from the move's base PP + PP Ups
+        // FIX: PP and PP Ups ARE stored in the Pokemon struct at offsets 0x17-0x1A
+        // Each byte: bits 5-0 = current PP, bits 7-6 = PP Ups count (0-3)
         const moves = moveIds.map((id, idx) => {
-            const moveData = id > 0 && id <= 251 ? { id, pp: 0, ppUps: 0 } : { id: 0, pp: 0, ppUps: 0 };
-            return moveData;
+            if (id === 0 || id > 251) return { id: 0, pp: 0, ppUps: 0 };
+            const ppByte = ppUpsBytes[idx] || 0;
+            const pp = ppByte & 0x3F;          // bits 5-0 = current PP
+            const ppUps = (ppByte >> 6) & 0x3; // bits 7-6 = PP Ups (0-3)
+            return { id, pp, ppUps };
         });
 
         const structSize = isParty ? 48 : 32;
@@ -610,6 +629,9 @@ export class Gen2Parser {
                 gender,
                 friendship,
                 pokerus,
+                pokerusStrain: (pokerusByte >> 4) & 0xF,
+                pokerusDays: pokerusByte & 0xF,
+                caughtData,
                 eggSteps,
                 isEgg
             }

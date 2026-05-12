@@ -291,7 +291,30 @@ export class Gen1Adapter extends BaseAdapter {
     // ================================================================
 
     supportsFeature(feature) {
-        const supported = ['pokerus'];
+        const supported = ['ppUps', 'legality', 'catchRate'];
         return supported.includes(feature);
+    }
+
+    // ================================================================
+    // ---- LEGALITY & DATA ACCESS (Phase 6) ----
+    // ================================================================
+
+    getMaxSpecies() { return 151; }
+    getMaxMoveId() { return 165; }
+    getMaxItemId() { return 255; }
+
+    getMoveBasePP(moveId) {
+        return MOVES_PP[moveId] || 0;
+    }
+
+    /**
+     * Export a .pk1 file for a Pokemon.
+     * @param {CanonicalPokemon} pokemon
+     * @returns {Uint8Array}
+     */
+    exportPk1(pokemon) {
+        // Convert CanonicalPokemon to legacy format for the writer
+        const legacyMon = this._canonicalToLegacy(pokemon);
+        return this.writer.createPk1Binary(legacyMon);
     }
 }

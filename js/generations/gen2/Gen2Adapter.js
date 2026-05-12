@@ -354,7 +354,40 @@ export class Gen2Adapter extends BaseAdapter {
     // ================================================================
 
     supportsFeature(feature) {
-        const supported = ['heldItems', 'shiny', 'gender', 'friendship', 'pokerus', 'eggSteps'];
+        const supported = ['heldItems', 'shiny', 'gender', 'friendship', 'pokerus', 'eggSteps', 'ppUps', 'legality', 'caughtData'];
         return supported.includes(feature);
+    }
+
+    // ================================================================
+    // ---- LEGALITY & DATA ACCESS (Phase 6) ----
+    // ================================================================
+
+    getMaxSpecies() { return 251; }
+    getMaxMoveId() { return 251; }
+    getMaxItemId() { return 255; }
+
+    getMoveBasePP(moveId) {
+        if (GEN2_MOVE_DATA && GEN2_MOVE_DATA[moveId]) {
+            return GEN2_MOVE_DATA[moveId].pp || 0;
+        }
+        return 0;
+    }
+
+    /**
+     * Get the .pk2 file bytes for a Pokemon.
+     * @param {CanonicalPokemon} pokemon
+     * @returns {Uint8Array}
+     */
+    exportPk2(pokemon) {
+        return this.writer.createPk2(pokemon);
+    }
+
+    /**
+     * Import a .pk2 file and return raw struct data for parsing.
+     * @param {Uint8Array} data
+     * @returns {Object|null}
+     */
+    importPk2(data) {
+        return this.writer.parsePk2(data);
     }
 }

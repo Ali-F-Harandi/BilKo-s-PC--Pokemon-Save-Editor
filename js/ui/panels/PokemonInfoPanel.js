@@ -3,10 +3,7 @@
  *
  * Refactored: Uses adapter for all data lookups instead of direct imports.
  * The adapter is passed in as a parameter.
- * MODIFIED: Type badges now show icons + color.
  */
-
-import { getTypeIcon } from '../../data/typeIcons.js';
 
 export function render(localMon, appState, generation = 1, adapter = null) {
     const dexId = localMon.dexId || 0;
@@ -16,15 +13,14 @@ export function render(localMon, appState, generation = 1, adapter = null) {
     const pokemonList = adapter ? adapter.getPokemonList() : [];
     const speciesName = pokemonList[dexId] || '';
 
-    // Types via adapter — with icons
+    // Types via adapter
     let typeBadgesHtml = '';
     if (adapter) {
         const types = adapter.getPokemonTypes(dexId);
         const colors = adapter.getTypeColors();
-        typeBadgesHtml = types.map(t => {
-            const icon = getTypeIcon(t);
-            return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold text-white" style="background:${colors[t]||'#999'}">${icon}${t}</span>`;
-        }).join(' ');
+        typeBadgesHtml = types.map(t =>
+            `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold text-white" style="background:${colors[t]||'#999'}">${t}</span>`
+        ).join(' ');
     }
 
     // Growth rate and level from EXP via adapter

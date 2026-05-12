@@ -100,8 +100,11 @@ export const Gen2Schema = {
                     { key: 'gender', label: 'Gender', type: 'select', options: ['Male', 'Female', 'Genderless'] },
                     { key: 'status', label: 'Status', type: 'select', options: ['OK', 'SLP', 'PSN', 'BRN', 'FRZ', 'PAR'] },
                     { key: 'friendship', label: 'Friendship', type: 'number', min: 0, max: 255 },
-                    { key: 'pokerus', label: 'Pokérus', type: 'number', min: 0, max: 15 },
-                    { key: 'eggSteps', label: 'Egg Steps', type: 'number', min: 0, max: 65535 },
+                    { key: 'pokerusStrain', label: 'Pokérus Strain', type: 'number', min: 0, max: 15 },
+                    { key: 'pokerusDays', label: 'Pokérus Days', type: 'number', min: 0, max: 15 },
+                    { key: 'isEgg', label: 'Is Egg', type: 'checkbox' },
+                    // Hidden Power info (computed from DVs)
+                    { key: 'hiddenPowerType', label: 'Hidden Power', type: 'text', readOnly: true, computed: true },
                     // catchRate hidden in Gen 2 (byte repurposed)
                     { key: 'catchRate', label: 'Catch Rate', type: 'hidden' },
                     // Gen3+ fields still hidden

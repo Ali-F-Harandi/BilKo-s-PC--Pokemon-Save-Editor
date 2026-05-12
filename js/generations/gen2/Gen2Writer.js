@@ -4,14 +4,18 @@
  * Writes CanonicalSaveFile data back to Gen 2 binary format.
  * Updates both checksums after writing.
  *
- * The writer takes a CanonicalSaveFile, converts it to the Gen 2 binary
- * layout, and recalculates checksums for both save regions.
+ * CRITICAL FIXES from improvement plan:
+ * - Checksums now use PLAIN 16-bit additive sum (NOT 1's complement)
+ * - PP/PPUps are now written at correct offsets (0x17-0x1A)
+ * - Money is now written as integer (NOT BCD) for Gen2
+ * - Game variant-specific checksum offsets are supported
  */
 
-import { GEN2_OFFSETS, GEN2_PARTY_STRUCT, GEN2_BOX_STRUCT, GEN2_INTERNAL_TO_DEX, GEN2_EGG_SPECIES_ID } from './constants.js';
+import { GEN2_OFFSETS, GEN2_PARTY_STRUCT, GEN2_BOX_STRUCT, GEN2_INTERNAL_TO_DEX, GEN2_EGG_SPECIES_ID, GEN2_CHECKSUM_VARIANTS, GEN2_BACKUP_REGIONS } from './constants.js';
 import { encodeGen2Text } from './textCodec.js';
 import { GEN2_POKEMON_NAMES } from './data/pokemonData.js';
 import { GEN2_ITEM_NAMES } from './data/itemData.js';
+import { GEN2_MOVE_DATA } from './data/moveData.js';
 
 export class Gen2Writer {
     /**
@@ -25,6 +29,9 @@ export class Gen2Writer {
         const view = new Uint8Array(rawData.length);
         view.set(rawData);
 
+        // Detect game variant for correct checksum offsets
+        const gameVariant = this._detectGameVariant(canonicalSave);
+
         // Write trainer info
         this._writeTrainer(view, canonicalSave);
 
@@ -37,31 +44,82 @@ export class Gen2Writer {
         // Write items
         this._writeItems(view, canonicalSave);
 
-        // Recalculate and write checksums
-        this._writeChecksums(view);
+        // Recalculate and write checksums using CORRECT algorithm
+        this._writeChecksums(view, gameVariant);
+
+        // Write backup regions
+        this._writeBackupRegions(view, gameVariant);
 
         return view;
     }
 
     /**
      * Create a .pk2 binary from a CanonicalPokemon.
+     * .pk2 format: [count=1, species, 0xFF, body(48 bytes), OT(11 bytes), Nick(11 bytes)] = 73 bytes (INT)
      * @param {import('../../core/CanonicalModel.js').CanonicalPokemon} pokemon - Canonical Pokemon data
      * @returns {Uint8Array}
      */
-    createPk2(pokemon) {
-        // PK2 format: 48-byte party struct + 11-byte OT name + 11-byte nickname = 70 bytes
-        const buffer = new Uint8Array(70);
+    createPk2(pokemon, isJapanese = false) {
+        const strLen = isJapanese ? 6 : 11;
+        const totalSize = 1 + 1 + 1 + 48 + strLen + strLen; // count + species + term + body + OT + nick
+        const buffer = new Uint8Array(totalSize);
 
-        this._writePokemonStruct(buffer, 0, pokemon, true);
-        this._writeText(buffer, 48, pokemon.otName || '', 11);
-        this._writeText(buffer, 59, pokemon.nickname || '', 11);
+        let pos = 0;
+        buffer[pos++] = 1; // count = 1
+        buffer[pos++] = pokemon.speciesId || 0; // species
+        buffer[pos++] = 0xFF; // terminator
+
+        this._writePokemonStruct(buffer, pos, pokemon, true);
+        pos += 48;
+
+        this._writeText(buffer, pos, pokemon.otName || '', strLen);
+        pos += strLen;
+
+        this._writeText(buffer, pos, pokemon.nickname || '', strLen);
 
         return buffer;
+    }
+
+    /**
+     * Parse a .pk2 binary and return CanonicalPokemon data.
+     * @param {Uint8Array} data - .pk2 binary data
+     * @returns {Object|null}
+     */
+    parsePk2(data) {
+        if (data.length < 50) return null;
+        let pos = 0;
+        const count = data[pos++]; // should be 1
+        const species = data[pos++]; // species
+        const term = data[pos++]; // should be 0xFF
+
+        if (count !== 1 || term !== 0xFF) return null;
+
+        // The remaining data is a 48-byte party struct + OT + nick
+        // We just return the raw struct for the parser to handle
+        return {
+            speciesId: species,
+            rawData: data.slice(3, 3 + 48),
+            otNameRaw: data.slice(3 + 48, 3 + 48 + 11),
+            nickNameRaw: data.slice(3 + 48 + 11, 3 + 48 + 22),
+        };
     }
 
     // ================================================================
     // ---- PRIVATE WRITE METHODS ----
     // ================================================================
+
+    /**
+     * Detect game variant from save data for correct checksum offsets.
+     * @private
+     */
+    _detectGameVariant(save) {
+        const gameVersion = save.gameVersion || 'Gold';
+        const isCrystal = gameVersion === 'Crystal';
+
+        // For now, assume International. Japanese detection would need file size check.
+        if (isCrystal) return 'c-int';
+        return 'gs-int';
+    }
 
     /**
      * Write trainer info to the save buffer.
@@ -82,9 +140,12 @@ export class Gen2Writer {
             view[GEN2_OFFSETS.RIVAL_NAME + i] = rivalBytes[i] || 0x50;
         }
 
-        // Money (BCD)
+        // FIX: Gen2 money is stored as a 3-byte big-endian INTEGER (NOT BCD!)
         const money = Math.min(trainer.money || 0, 999999);
-        this._writeBCD(view, GEN2_OFFSETS.MONEY, money, 3);
+        const moneyVal = money; // Direct integer value
+        view[GEN2_OFFSETS.MONEY] = (moneyVal >> 16) & 0xFF;
+        view[GEN2_OFFSETS.MONEY + 1] = (moneyVal >> 8) & 0xFF;
+        view[GEN2_OFFSETS.MONEY + 2] = moneyVal & 0xFF;
 
         // Player ID (big-endian)
         const id = parseInt(trainer.id) || 0;
@@ -103,7 +164,7 @@ export class Gen2Writer {
         // Current box
         view[GEN2_OFFSETS.CURRENT_BOX] = (save.currentBoxId || 0) & 0x7F;
 
-        // Gender (Crystal)
+        // Gender (Crystal) — use correct offset 0x3E3D
         if (save.genExtension?.isCrystal) {
             view[GEN2_OFFSETS.PLAYER_GENDER] = trainer.gender === 'Female' ? 1 : 0;
         }
@@ -150,16 +211,14 @@ export class Gen2Writer {
     }
 
     /**
-     * Write PC boxes.
+     * Write PC boxes with proper bank layout.
      * @private
      */
     _writeBoxes(view, save) {
         const boxes = save.pcBoxes || [];
         const currentBoxId = save.currentBoxId || 0;
 
-        // This is simplified - a full implementation would need to
-        // properly lay out boxes across the two bank regions
-        // For now, write the current box data
+        // Write all 14 boxes
         for (let boxIdx = 0; boxIdx < Math.min(boxes.length, 14); boxIdx++) {
             const box = boxes[boxIdx] || [];
             let boxOffset;
@@ -167,7 +226,7 @@ export class Gen2Writer {
             if (boxIdx === currentBoxId) {
                 boxOffset = GEN2_OFFSETS.CURRENT_BOX_DATA;
             } else {
-                // Calculate offset in banks
+                // Calculate position in banks
                 let bankIndex = 0;
                 for (let j = 0; j < boxIdx; j++) {
                     if (j === currentBoxId) continue;
@@ -199,7 +258,8 @@ export class Gen2Writer {
         // Write species list
         for (let i = 0; i < 20; i++) {
             if (i < count && boxPokemon[i]) {
-                view[speciesStart + i] = boxPokemon[i].speciesId || 0;
+                const speciesId = boxPokemon[i].speciesId || 0;
+                view[speciesStart + i] = boxPokemon[i].genExtension?.isEgg ? 0xFD : speciesId;
             } else {
                 view[speciesStart + i] = 0xFF;
             }
@@ -227,11 +287,9 @@ export class Gen2Writer {
 
     /**
      * Write a Pokemon struct to the buffer.
+     * FIXED: PP/PPUps now written at correct offset 0x17-0x1A.
+     * FIXED: Pokerus at 0x1C, Friendship at 0x1B (were swapped before).
      * @private
-     * @param {Uint8Array} view - Target buffer
-     * @param {number} offset - Start offset
-     * @param {Object} pokemon - CanonicalPokemon data
-     * @param {boolean} isParty - Whether this is a party Pokemon (48 bytes) or box (32 bytes)
      */
     _writePokemonStruct(view, offset, pokemon, isParty) {
         const struct = isParty ? GEN2_PARTY_STRUCT : GEN2_BOX_STRUCT;
@@ -267,7 +325,7 @@ export class Gen2Writer {
         this._writeUInt16BE(view, offset + struct.ATK_EV, evs.attack || 0);
         this._writeUInt16BE(view, offset + struct.DEF_EV, evs.defense || 0);
         this._writeUInt16BE(view, offset + struct.SPD_EV, evs.speed || 0);
-        this._writeUInt16BE(view, offset + struct.SPC_EV, evs.special || 0);
+        this._writeUInt16BE(view, offset + struct.SPC_EV, evs.special || evs.spAttack || 0);
 
         // DVs (2 bytes packed)
         const ivs = pokemon.ivs || {};
@@ -278,15 +336,30 @@ export class Gen2Writer {
         view[offset + struct.DVS] = (atkDv << 4) | defDv;
         view[offset + struct.DVS + 1] = (spdDv << 4) | spcDv;
 
-        // Pokerus
-        view[offset + struct.POKERUS] = pokemon.genExtension?.pokerus || 0;
+        // FIX: PP + PP Ups at offset 0x17-0x1A (4 bytes)
+        // Each byte: bits 5-0 = current PP, bits 7-6 = PP Ups count
+        for (let i = 0; i < 4; i++) {
+            const move = moves[i] || { id: 0, pp: 0, ppUps: 0 };
+            const ppUps = (move.ppUps || 0) & 0x3;
+            const pp = move.pp || 0;
+            const basePP = (move.id > 0 && GEN2_MOVE_DATA && GEN2_MOVE_DATA[move.id]) ? GEN2_MOVE_DATA[move.id].pp : 0;
+            // If pp is 0 but we have a move, calculate from base PP
+            const effectivePP = pp > 0 ? pp : (basePP + Math.floor(basePP * ppUps * 20 / 100));
+            view[offset + struct.PP_UPS + i] = ((ppUps << 6) | (effectivePP & 0x3F)) & 0xFF;
+        }
 
-        // Friendship
+        // FIX: Friendship at offset 0x1B (NOT 0x18)
         view[offset + struct.FRIENDSHIP] = pokemon.genExtension?.friendship || 0;
 
-        // Egg Steps
-        const eggSteps = pokemon.genExtension?.eggSteps || 0;
-        this._writeUInt16BE(view, offset + struct.EGG_STEPS, eggSteps);
+        // FIX: Pokerus at offset 0x1C (NOT 0x17)
+        view[offset + struct.POKERUS] = pokemon.genExtension?.pokerus || 0;
+
+        // Caught Data (Crystal only, offset 0x1D-0x1E)
+        if (pokemon.genExtension?.caughtData !== undefined) {
+            const caughtData = pokemon.genExtension.caughtData;
+            view[offset + struct.CAUGHT_DATA] = caughtData & 0xFF;
+            view[offset + struct.CAUGHT_DATA + 1] = (caughtData >> 8) & 0xFF;
+        }
 
         // Party-only fields
         if (isParty) {
@@ -297,7 +370,7 @@ export class Gen2Writer {
             const statusMap = { 'OK': 0, 'SLP': 0x07, 'PSN': 0x08, 'BRN': 0x10, 'FRZ': 0x20, 'PAR': 0x40, 'TOX': 0x08 };
             view[offset + GEN2_PARTY_STRUCT.STATUS] = statusMap[pokemon.status] || 0;
 
-            // Stats (2 bytes big-endian each)
+            // Stats (2 bytes big-endian each) — FIXED offsets
             this._writeUInt16BE(view, offset + GEN2_PARTY_STRUCT.CURRENT_HP, stats.hp || 0);
             this._writeUInt16BE(view, offset + GEN2_PARTY_STRUCT.MAX_HP, stats.maxHp || 0);
             this._writeUInt16BE(view, offset + GEN2_PARTY_STRUCT.ATTACK, stats.attack || 0);
@@ -357,38 +430,52 @@ export class Gen2Writer {
     }
 
     /**
-     * Write a BCD value.
+     * CRITICAL FIX: Write checksums using PLAIN 16-bit additive sum.
+     * Gen2 does NOT use 1's complement — it's a direct sum stored as u16 LE.
      * @private
      */
-    _writeBCD(view, offset, value, numBytes) {
-        for (let i = numBytes - 1; i >= 0; i--) {
-            const byteVal = value % 100;
-            view[offset + i] = ((Math.floor(byteVal / 10) << 4) | (byteVal % 10));
-            value = Math.floor(value / 100);
+    _writeChecksums(view, gameVariant = 'gs-int') {
+        const variant = GEN2_CHECKSUM_VARIANTS[gameVariant] || GEN2_CHECKSUM_VARIANTS['gs-int'];
+
+        // Checksum 1: plain 16-bit additive sum, stored little-endian
+        if (variant.checksum1) {
+            const { start, end, store } = variant.checksum1;
+            let sum1 = 0;
+            for (let i = start; i <= end; i++) {
+                sum1 += view[i];
+            }
+            const checksum1 = (sum1 & 0xFFFF) >>> 0; // PLAIN sum, NOT complement!
+            view[store] = checksum1 & 0xFF;
+            view[store + 1] = (checksum1 >> 8) & 0xFF;
+        }
+
+        // Checksum 2: plain 16-bit additive sum, stored little-endian
+        if (variant.checksum2) {
+            const { start, end, store } = variant.checksum2;
+            let sum2 = 0;
+            for (let i = start; i <= end; i++) {
+                sum2 += view[i];
+            }
+            const checksum2 = (sum2 & 0xFFFF) >>> 0; // PLAIN sum, NOT complement!
+            view[store] = checksum2 & 0xFF;
+            view[store + 1] = (checksum2 >> 8) & 0xFF;
         }
     }
 
     /**
-     * Recalculate and write both checksums.
+     * Write backup regions for data redundancy.
      * @private
      */
-    _writeChecksums(view) {
-        // Checksum 1: complement of sum of bytes from CHECKSUM_1_START to CHECKSUM_1_END
-        let sum1 = 0;
-        for (let i = GEN2_OFFSETS.CHECKSUM_1_START; i <= GEN2_OFFSETS.CHECKSUM_1_END; i++) {
-            sum1 += view[i];
-        }
-        const checksum1 = ((~sum1) & 0xFFFF) >>> 0;
-        view[GEN2_OFFSETS.CHECKSUM_1] = checksum1 & 0xFF;
-        view[GEN2_OFFSETS.CHECKSUM_1 + 1] = (checksum1 >> 8) & 0xFF;
+    _writeBackupRegions(view, gameVariant = 'gs-int') {
+        const regions = GEN2_BACKUP_REGIONS[gameVariant];
+        if (!regions) return;
 
-        // Checksum 2: complement of sum of bytes from CHECKSUM_2_START to CHECKSUM_2_END
-        let sum2 = 0;
-        for (let i = GEN2_OFFSETS.CHECKSUM_2_START; i <= GEN2_OFFSETS.CHECKSUM_2_END; i++) {
-            sum2 += view[i];
+        for (const region of regions) {
+            for (let i = 0; i < region.len; i++) {
+                if (region.src + i < view.length && region.dst + i < view.length) {
+                    view[region.dst + i] = view[region.src + i];
+                }
+            }
         }
-        const checksum2 = ((~sum2) & 0xFFFF) >>> 0;
-        view[GEN2_OFFSETS.CHECKSUM_2] = checksum2 & 0xFF;
-        view[GEN2_OFFSETS.CHECKSUM_2 + 1] = (checksum2 >> 8) & 0xFF;
     }
 }
