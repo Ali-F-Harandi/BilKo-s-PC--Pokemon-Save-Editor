@@ -32,7 +32,7 @@ import { GEN2_TYPE_NAMES, GEN2_TYPE_COLORS, GEN2_TYPE_CHART } from './data/typeC
 import { GEN2_BASE_STATS } from './data/baseStats.js';
 import { decodeGen2Text, encodeGen2Text } from './textCodec.js';
 import { getAsciiString } from '../../engine/byteHelpers.js';
-import { GEN2_OFFSETS, GEN2_SHINY_ATTACK_DVS, GEN2_SHINY_STAT_DV } from './constants.js';
+import { GEN2_OFFSETS, GEN2_SHINY_ATTACK_DVS, GEN2_SHINY_STAT_DV, GS_INT_OFFSETS, C_INT_OFFSETS } from './constants.js';
 import { REGION_BADGES } from '../../data/gameData.js';
 import { getGrowthRate, getLevelFromExp, getExpAtLevel } from '../../data/experience.js';
 
@@ -81,24 +81,80 @@ export class Gen2Adapter extends BaseAdapter {
     }
 
     detectGameVersion(uint8Array, filename) {
-        // Check Game Boy header for title
+        // Use PokeList validation (PKHeX method) — the ROM header at 0x134
+        // is NOT reliable for .sav files since it's part of the ROM, not SRAM.
+        
+        // GS International: party at 0x288A, current box at 0x2D6C (20 per box)
+        if (this._isPokeListValid(uint8Array, GS_INT_OFFSETS.PARTY_COUNT, 6)) {
+            // Could be GS or Crystal — check Crystal offset too
+            if (this._isPokeListValid(uint8Array, C_INT_OFFSETS.PARTY_COUNT, 6)) {
+                // Both are valid — use checksum to distinguish
+                // Crystal checksum 1 covers 0x2009-0x2B82, stored at 0x2D0D
+                if (this._validateChecksum(uint8Array, 0x2009, 0x2B82, 0x2D0D)) {
+                    return 'Crystal';
+                }
+            }
+            // GS checksum 1 covers 0x2009-0x2D68, stored at 0x2D69
+            if (this._validateChecksum(uint8Array, 0x2009, 0x2D68, 0x2D69)) {
+                // Can't distinguish Gold vs Silver from save data — default to Gold
+                return 'Gold';
+            }
+        }
+        
+        // Crystal International: party at 0x2865
+        if (this._isPokeListValid(uint8Array, C_INT_OFFSETS.PARTY_COUNT, 6)) {
+            return 'Crystal';
+        }
+        
+        // Fallback: check ROM header (unreliable but worth trying)
         const titleOffset = GEN2_OFFSETS.GAME_TITLE_OFFSET;
         if (uint8Array.length > titleOffset + 16) {
             const title = getAsciiString(uint8Array, titleOffset, 16).toUpperCase();
             if (title.includes('CRYSTAL')) return 'Crystal';
-            if (title.includes('GOLD')) return 'Gold';
             if (title.includes('SILVER')) return 'Silver';
+            if (title.includes('GOLD')) return 'Gold';
         }
 
         // Fallback: check filename
         if (filename) {
             const lower = filename.toLowerCase();
             if (lower.includes('crystal')) return 'Crystal';
-            if (lower.includes('gold')) return 'Gold';
             if (lower.includes('silver')) return 'Silver';
+            if (lower.includes('gold')) return 'Gold';
         }
 
+        // Default to Gold (can't distinguish from save data alone)
         return 'Gold';
+    }
+
+    /**
+     * Check if a PokeList is valid at the given offset.
+     * @private
+     */
+    _isPokeListValid(view, offset, maxCount) {
+        if (offset >= view.length) return false;
+        const count = view[offset];
+        if (count > maxCount) return false;
+        const terminatorPos = offset + 1 + count;
+        if (terminatorPos >= view.length) return false;
+        return view[terminatorPos] === 0xFF;
+    }
+
+    /**
+     * Validate a checksum range.
+     * @private
+     */
+    _validateChecksum(view, start, end, checksumOffset) {
+        let sum = 0;
+        for (let i = start; i <= end; i++) {
+            sum += view[i];
+        }
+        const calculated = (sum & 0xFFFF) >>> 0;
+        if (checksumOffset + 1 >= view.length) return false;
+        const storedLow = view[checksumOffset];
+        const storedHigh = view[checksumOffset + 1];
+        const stored = ((storedHigh << 8) | storedLow) >>> 0;
+        return calculated === stored;
     }
 
     // ================================================================

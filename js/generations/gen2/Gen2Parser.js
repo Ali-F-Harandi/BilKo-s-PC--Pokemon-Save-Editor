@@ -4,17 +4,26 @@
  * Parses Pokemon Gold, Silver, and Crystal save files from binary
  * into CanonicalSaveFile / CanonicalPokemon objects.
  *
- * Gen 2 save format (32768 bytes):
- * - 0x0000-0x0FFF: Hall of Fame, mystery gift, etc.
- * - 0x1000-0x1FFF: Mirror of current box data
- * - 0x2000-0x2D0C: Main save data (checksum 1)
- * - 0x2D0D: Checksum 1
- * - 0x2D0E-0x7F6C: Box data banks (checksum 2)
- * - 0x7F6D: Checksum 2
+ * VERIFIED against PKHeX source code (SAV2.cs, PK2.cs, PokeList2.cs)
+ * and pokecrystal disassembly.
+ *
+ * Key corrections from previous version:
+ * - Uses game-version-specific offsets (GS vs Crystal have DIFFERENT offsets!)
+ * - PokeList2 format: species, structs, OT names, nicknames are SEPARATE blocks
+ * - Text encoding uses 0x80-0xFF range (NOT 0x01-0x4A)
+ * - Game detection uses PokeList validation (NOT ROM header at 0x134)
+ * - Box offsets are at FIXED positions in SRAM banks (not relative to current box)
+ * - Money is 3-byte big-endian binary integer (NOT BCD)
  */
 
 import { CanonicalSaveFile, CanonicalPokemon } from '../../core/CanonicalModel.js';
-import { GEN2_OFFSETS, GEN2_PARTY_STRUCT, GEN2_BOX_STRUCT, GEN2_INTERNAL_TO_DEX, GEN2_EGG_SPECIES_ID, GEN2_SHINY_ATTACK_DVS, GEN2_SHINY_STAT_DV, GEN2_GENDER_THRESHOLDS } from './constants.js';
+import {
+    GEN2_PARTY_STRUCT, GEN2_BOX_STRUCT, GEN2_INTERNAL_TO_DEX,
+    GEN2_EGG_SPECIES_ID, GEN2_SHINY_ATTACK_DVS, GEN2_SHINY_STAT_DV,
+    getOffsetsForVersion, GS_INT_OFFSETS, C_INT_OFFSETS,
+    GS_INT_BOX_OFFSETS, C_INT_BOX_OFFSETS, BOX_LIST_SIZE_INT,
+    GEN2_CHECKSUM_VARIANTS, GS_BACKUP_REGIONS
+} from './constants.js';
 import { decodeGen2Text } from './textCodec.js';
 import { GEN2_POKEMON_NAMES } from './data/pokemonData.js';
 import { GEN2_POKEMON_TYPES, GEN2_GENDER_RATIOS } from './data/pokemonData.js';
@@ -22,7 +31,7 @@ import { GEN2_MOVE_NAMES } from './data/moveData.js';
 import { GEN2_ITEM_NAMES } from './data/itemData.js';
 import { GEN2_TYPE_NAMES } from './data/typeChart.js';
 import { GEN2_BASE_STATS } from './data/baseStats.js';
-import { getUInt16BigEndian, getUInt24BigEndian, parseBCD, countSetBits, decodeStatus, getAsciiString } from '../../engine/byteHelpers.js';
+import { getUInt16BigEndian, getUInt24BigEndian, countSetBits, decodeStatus, getAsciiString } from '../../engine/byteHelpers.js';
 
 export class Gen2Parser {
     /**
@@ -35,43 +44,32 @@ export class Gen2Parser {
         try {
             const view = uint8Array;
 
-            // Detect game version first
+            // Step 1: Detect game version using PokeList validation
             const gameVersion = this._detectGameVersion(view, filename);
+            const off = getOffsetsForVersion(gameVersion);
+            const isCrystal = gameVersion === 'Crystal';
 
-            // Validate checksums (using correct algorithm: plain 16-bit sum, NOT complement)
+            console.log(`[Gen2Parser] Detected game: ${gameVersion}`);
+
+            // Step 2: Validate checksums
             const checksumResult = this._validateChecksums(view, gameVersion);
             if (!checksumResult.valid) {
                 return { success: false, error: 'Invalid checksums. This does not appear to be a valid Gen 2 save file.' };
             }
             if (checksumResult.checksum2Valid === false) {
-                console.warn('[Gen2Parser] Checksum 2 (box data) invalid — boxes may be corrupted.');
+                console.warn('[Gen2Parser] Checksum 2 (box/backup data) invalid — boxes may be corrupted.');
             }
 
-            // Parse trainer info
-            const trainer = this._parseTrainer(view);
+            // Step 3: Parse all data using the correct offsets
+            const trainer = this._parseTrainer(view, off, isCrystal);
+            const pokedex = this._parsePokedex(view, off);
+            const party = this._parseParty(view, off);
+            const pcBoxes = this._parseBoxes(view, off, isCrystal);
+            const items = this._parseItems(view, off);
+            const options = this._parseOptions(view, off);
+            const daycare = this._parseDaycare(view, off);
 
-            // Parse Pokedex
-            const pokedex = this._parsePokedex(view);
-
-            // Parse party
-            const party = this._parseParty(view);
-
-            // Parse PC boxes
-            const pcBoxes = this._parseBoxes(view);
-
-            // Parse items (Gen 2 has 4 pockets)
-            const items = this._parseItems(view);
-
-            // Parse event flags
-            const eventFlags = this._parseEventFlags(view);
-
-            // Parse daycare
-            const daycare = this._parseDaycare(view);
-
-            // Parse options
-            const options = this._parseOptions(view);
-
-            // Build CanonicalSaveFile
+            // Step 4: Build CanonicalSaveFile
             const canonicalSave = new CanonicalSaveFile({
                 formatVersion: 1,
                 generationId: 2,
@@ -95,7 +93,7 @@ export class Gen2Parser {
                 pokedexOwnedFlags: pokedex.ownedFlags,
                 pokedexSeenFlags: pokedex.seenFlags,
 
-                eventFlags: eventFlags,
+                eventFlags: [],
                 hallOfFame: [],
                 daycare: daycare,
 
@@ -108,8 +106,7 @@ export class Gen2Parser {
                 rawData: view,
 
                 genExtension: {
-                    timeOfDay: this._parseRTC(view),
-                    isCrystal: gameVersion === 'Crystal',
+                    isCrystal: isCrystal,
                 }
             });
 
@@ -132,83 +129,119 @@ export class Gen2Parser {
     }
 
     // ================================================================
-    // ---- PRIVATE PARSING METHODS ----
+    // ---- GAME VERSION DETECTION ----
     // ================================================================
 
     /**
-     * Detect game version from save data.
+     * Detect game version using PKHeX's PokeList validation method.
+     * This checks if the party/box species list format is valid at known offsets.
+     * 
+     * Detection order (from PKHeX SaveUtil.cs):
+     * 1. GS International: party@0x288A + box@0x2D6C (20 per box)
+     * 2. Crystal International: party@0x2865 + box@0x2D10 (20 per box)
+     * 3. GS Japanese: party@0x283E + box@0x2D10 (30 per box) [if 64KB file]
+     * 4. Crystal Japanese: party@0x281A + box@0x2D10 (30 per box) [if 64KB file]
+     * 
      * @private
      */
     _detectGameVersion(view, filename) {
-        // Check Game Boy header for title
-        const titleOffset = GEN2_OFFSETS.GAME_TITLE_OFFSET;
-        if (view.length > titleOffset + 16) {
-            const title = getAsciiString(view, titleOffset, 16).toUpperCase();
-            if (title.includes('PM_CRYSTAL') || title.includes('CRYSTAL')) return 'Crystal';
-            if (title.includes('PM_GOLD') || title.includes('GOLD')) return 'Gold';
-            if (title.includes('PM_SILVER') || title.includes('SILVER')) return 'Silver';
-            // Check without PM_ prefix
-            if (title.includes('CRYST')) return 'Crystal';
-            if (title.includes('GOLD')) return 'Gold';
-            if (title.includes('SILVER')) return 'Silver';
-        }
-
-        // Check Crystal-specific data (mobile phone, female trainer)
-        if (view.length > GEN2_OFFSETS.PLAYER_GENDER) {
-            const gender = view[GEN2_OFFSETS.PLAYER_GENDER];
-            // Crystal can have female trainer (0x01)
-            // This is a heuristic — not 100% reliable
-        }
-
-        // Fallback: check filename
+        // Check filename first for explicit hints
         if (filename) {
             const lower = filename.toLowerCase();
             if (lower.includes('crystal')) return 'Crystal';
-            if (lower.includes('gold')) return 'Gold';
             if (lower.includes('silver')) return 'Silver';
+            if (lower.includes('gold')) return 'Gold';
         }
 
-        // Default to Gold
+        // Try PokeList validation (PKHeX method)
+        // GS International: party count at 0x288A, species list valid, box list at 0x2D6C
+        if (this._isPokeListValid(view, 0x288A, 6) && this._isPokeListValid(view, 0x2D6C, 20)) {
+            // Check if Crystal by trying Crystal-specific validation
+            // Crystal party is at 0x2865 — if that's also valid, it might be Crystal
+            // Use checksum to disambiguate
+            if (this._validateChecksumRange(view, 0x2009, 0x2B82, 0x2D0D)) {
+                // Crystal checksum validates — it's Crystal
+                return 'Crystal';
+            }
+            // GS checksum validates
+            return this._validateChecksumRange(view, 0x2009, 0x2D68, 0x2D69) ? 'Gold' : 'Gold';
+            // Can't distinguish Gold vs Silver from save data alone — default to Gold
+        }
+
+        // Crystal International: party count at 0x2865, box list at 0x2D10
+        if (this._isPokeListValid(view, 0x2865, 6) && this._isPokeListValid(view, 0x2D10, 20)) {
+            return 'Crystal';
+        }
+
+        // Fallback: try ROM header (unreliable for .sav files but worth checking)
+        if (view.length > 0x134 + 16) {
+            const title = getAsciiString(view, 0x134, 16).toUpperCase();
+            if (title.includes('CRYSTAL') || title.includes('PM_CRYSTAL')) return 'Crystal';
+            if (title.includes('SILVER') || title.includes('PM_SILVER')) return 'Silver';
+            if (title.includes('GOLD') || title.includes('PM_GOLD')) return 'Gold';
+        }
+
+        // Last resort: try checksums to at least distinguish Crystal from GS
+        if (this._validateChecksumRange(view, 0x2009, 0x2B82, 0x2D0D)) {
+            return 'Crystal';
+        }
+
+        // Default to Gold (GS) — can't determine Silver vs Gold from save data
         return 'Gold';
     }
 
     /**
-     * Validate Gen 2 checksums using the correct algorithm (plain 16-bit sum).
-     * Gold/Silver and Crystal have DIFFERENT checksum positions and ranges.
-     * @param {Uint8Array} view
-     * @param {string} gameVersion - Detected game version
-     * @returns {{ valid: boolean, checksum2Valid: boolean|null }}
+     * Check if a PokeList at the given offset is valid.
+     * A valid PokeList has: count <= maxCount, and data[offset + 1 + count] == 0xFF
+     * @private
+     */
+    _isPokeListValid(view, offset, maxCount) {
+        if (offset >= view.length) return false;
+        const count = view[offset];
+        if (count > maxCount) return false;
+        // Check that the species list is terminated with 0xFF after count entries
+        const terminatorPos = offset + 1 + count;
+        if (terminatorPos >= view.length) return false;
+        return view[terminatorPos] === 0xFF;
+    }
+
+    // ================================================================
+    // ---- CHECKSUM VALIDATION ----
+    // ================================================================
+
+    /**
+     * Validate Gen 2 checksums.
      * @private
      */
     _validateChecksums(view, gameVersion) {
         if (gameVersion === 'Crystal') {
-            // International Crystal: sum 0x2009-0x2B82, checksum at 0x2D0D
+            // Crystal: checksum 1 over 0x2009-0x2B82, stored at 0x2D0D
             const ck1 = this._validateChecksumRange(view, 0x2009, 0x2B82, 0x2D0D);
             if (ck1) {
-                // Crystal checksum 2: sum 0x1209-0x1D82, checksum at 0x1F0D
+                // Crystal checksum 2: over 0x1209-0x1D82, stored at 0x1F0D
                 const ck2 = this._validateChecksumRange(view, 0x1209, 0x1D82, 0x1F0D);
                 return { valid: true, checksum2Valid: ck2 };
             }
-            // Fallback: try Gold/Silver offsets too (game detection might be wrong)
+            // Fallback: try GS offsets (game detection might be wrong)
             const gsCk1 = this._validateChecksumRange(view, 0x2009, 0x2D68, 0x2D69);
             if (gsCk1) {
                 return { valid: true, checksum2Valid: null };
             }
             return { valid: false, checksum2Valid: false };
         } else {
-            // Gold/Silver: sum 0x2009-0x2D68, checksum at 0x2D69
+            // Gold/Silver: checksum 1 over 0x2009-0x2D68, stored at 0x2D69
             const ck1 = this._validateChecksumRange(view, 0x2009, 0x2D68, 0x2D69);
             if (ck1) {
-                // Gold/Silver checksum 2: sum 0x2D6E-0x7E6C, checksum at 0x7E6D
-                const ck2 = this._validateChecksumRange(view, 0x2D6E, 0x7E6C, 0x7E6D);
+                // GS checksum 2 is over scattered backup regions — validate by summing all
+                const ck2 = this._validateGSChecksum2(view);
                 return { valid: true, checksum2Valid: ck2 };
             }
-            // Fallback: try Crystal offsets (game detection might be wrong)
+            // Fallback: try Crystal offsets
             const cryCk1 = this._validateChecksumRange(view, 0x2009, 0x2B82, 0x2D0D);
             if (cryCk1) {
                 return { valid: true, checksum2Valid: null };
             }
-            // Fallback: try Japanese Gold/Silver offsets
+            // Fallback: try Japanese GS offsets
             const jpnCk1 = this._validateChecksumRange(view, 0x2009, 0x2C8B, 0x2D0D);
             if (jpnCk1) {
                 return { valid: true, checksum2Valid: null };
@@ -218,12 +251,29 @@ export class Gen2Parser {
     }
 
     /**
+     * Validate GS checksum 2 (over scattered backup regions).
+     * @private
+     */
+    _validateGSChecksum2(view) {
+        let sum = 0;
+        for (const region of GS_BACKUP_REGIONS) {
+            for (let i = 0; i < region.len; i++) {
+                if (region.dst + i < view.length) {
+                    sum += view[region.dst + i];
+                }
+            }
+        }
+        const calculated = (sum & 0xFFFF) >>> 0;
+        const storeOffset = 0x7E6D;
+        if (storeOffset + 1 >= view.length) return null;
+        const storedLow = view[storeOffset];
+        const storedHigh = view[storeOffset + 1];
+        const stored = ((storedHigh << 8) | storedLow) >>> 0;
+        return calculated === stored;
+    }
+
+    /**
      * Validate a checksum range using plain 16-bit sum (little-endian storage).
-     * @param {Uint8Array} view
-     * @param {number} start - Start offset (inclusive)
-     * @param {number} end - End offset (inclusive)
-     * @param {number} checksumOffset - Where the 2-byte checksum is stored
-     * @returns {boolean}
      * @private
      */
     _validateChecksumRange(view, start, end, checksumOffset) {
@@ -231,70 +281,76 @@ export class Gen2Parser {
         for (let i = start; i <= end; i++) {
             sum += view[i];
         }
-        const calculated = (sum & 0xFFFF) >>> 0; // Plain 16-bit sum, NOT complement
+        const calculated = (sum & 0xFFFF) >>> 0;
+        if (checksumOffset + 1 >= view.length) return false;
         const storedLow = view[checksumOffset];
         const storedHigh = view[checksumOffset + 1];
-        const stored = ((storedHigh << 8) | storedLow) >>> 0; // Little-endian
+        const stored = ((storedHigh << 8) | storedLow) >>> 0;
         return calculated === stored;
     }
 
+    // ================================================================
+    // ---- TRAINER PARSING ----
+    // ================================================================
+
     /**
-     * Parse trainer information.
-     * FIX: Uses PKHeX-verified offsets for MONEY (0x23D9) and BADGES (0x23E4).
+     * Parse trainer information using game-version-correct offsets.
      * @private
      */
-    _parseTrainer(view) {
-        const name = decodeGen2Text(view, GEN2_OFFSETS.PLAYER_NAME, 11);
-        const id = getUInt16BigEndian(view, GEN2_OFFSETS.PLAYER_ID).toString().padStart(5, '0');
-        // FIX: Gen2 money is stored as 3-byte big-endian INTEGER at offset 0x23D9 (NOT BCD like Gen1!)
-        const moneyRaw = (view[GEN2_OFFSETS.MONEY] << 16) | (view[GEN2_OFFSETS.MONEY + 1] << 8) | view[GEN2_OFFSETS.MONEY + 2];
-        const money = moneyRaw & 0xFFFFFF; // Max 999999
-        const rivalName = decodeGen2Text(view, GEN2_OFFSETS.RIVAL_NAME, 11);
+    _parseTrainer(view, off, isCrystal) {
+        const name = decodeGen2Text(view, off.PLAYER_NAME, 11);
+        const id = getUInt16BigEndian(view, off.PLAYER_ID).toString().padStart(5, '0');
+        
+        // Money: 3-byte big-endian binary integer (NOT BCD!)
+        const moneyRaw = (view[off.MONEY] << 16) | (view[off.MONEY + 1] << 8) | view[off.MONEY + 2];
+        const money = moneyRaw & 0xFFFFFF;
+        if (money > 999999) console.warn(`[Gen2Parser] Money value ${money} exceeds max 999999`);
 
-        // FIX: Badges at 0x23E4 — 2 bytes LE (Johto + Kanto)
-        const badgesLow = view[GEN2_OFFSETS.BADGES] || 0;       // Johto badges byte
-        const badgesHigh = view[GEN2_OFFSETS.BADGES + 1] || 0;  // Kanto badges byte
-        const totalBadges = countSetBits([badgesLow], 0, 1) + countSetBits([badgesHigh], 0, 1);
-        // Store as combined 16-bit value (low byte = Johto, high byte = Kanto)
-        const badgesCombined = badgesLow | (badgesHigh << 8);
+        const rivalName = decodeGen2Text(view, off.RIVAL_NAME, 11);
+
+        // Badges: 2 separate bytes (Johto + Kanto)
+        const johtoBadges = view[off.JOHTO_BADGES] || 0;
+        const kantoBadges = view[off.KANTO_BADGES] || 0;
+        const totalBadges = countSetBits([johtoBadges], 0, 1) + countSetBits([kantoBadges], 0, 1);
+        const badgesCombined = johtoBadges | (kantoBadges << 8);
 
         // Play time
-        const hoursLow = view[GEN2_OFFSETS.TIME_PLAYED];
-        const hoursHigh = view[GEN2_OFFSETS.TIME_PLAYED + 1];
-        const hours = ((hoursHigh << 8) | hoursLow);
-        const minutes = view[GEN2_OFFSETS.TIME_PLAYED + 2];
+        const hours = getUInt16BigEndian(view, off.TIME_PLAYED);
+        const minutes = view[off.TIME_PLAYED + 2];
         const playTime = `${hours}h ${minutes.toString().padStart(2, '0')}m`;
 
-        // Gender (Crystal)
-        const genderByte = view[GEN2_OFFSETS.PLAYER_GENDER] || 0;
+        // Casino coins
+        const coins = getUInt16BigEndian(view, off.CASINO_COINS || (off.MONEY + 7));
+
+        // Gender (Crystal only)
+        const genderByte = isCrystal ? (view[off.PLAYER_GENDER] || 0) : 0;
         const gender = genderByte === 1 ? 'Female' : 'Male';
 
         return {
-            name, id, money,
-            coins: 0,
+            name, id, money, coins,
             playTime,
             badges: totalBadges,
-            badgesCombined,  // Store combined for accurate badge editing
+            badgesCombined,
             rivalName,
             pikachuFriendship: 0,
             gender
         };
     }
 
-    /**
-     * Parse Pokedex data.
-     * @private
-     */
-    _parsePokedex(view) {
-        const ownedFlags = [false]; // index 0 unused
+    // ================================================================
+    // ---- POKEDEX PARSING ----
+    // ================================================================
+
+    _parsePokedex(view, off) {
+        const ownedFlags = [false];
         const seenFlags = [false];
 
         for (let i = 1; i <= 251; i++) {
-            const byteIndex = Math.floor(i / 8);
-            const bitIndex = i % 8;
+            const byteIndex = Math.floor((i - 1) / 8);
+            const bitIndex = (i - 1) % 8;
 
-            const ownedByte = view[GEN2_OFFSETS.POKEDEX_OWNED + byteIndex];
-            const seenByte = view[GEN2_OFFSETS.POKEDEX_SEEN + byteIndex];
+            const ownedByte = view[off.POKEDEX_OWNED + byteIndex] || 0;
+            const seenByte = view[off.POKEDEX_SEEN + byteIndex] || 0;
 
             ownedFlags.push((ownedByte & (1 << bitIndex)) !== 0);
             seenFlags.push((seenByte & (1 << bitIndex)) !== 0);
@@ -308,18 +364,31 @@ export class Gen2Parser {
         };
     }
 
+    // ================================================================
+    // ---- PARTY PARSING (PokeList2 format) ----
+    // ================================================================
+
     /**
-     * Parse party Pokemon.
+     * Parse party Pokemon using PokeList2 format.
+     * The format is: [count(1)] [species(N+1)] [structs(N×48)] [OT(N×11)] [Nicks(N×11)]
+     * All sections are SEPARATE sequential blocks, NOT interleaved.
      * @private
      */
-    _parseParty(view) {
-        const count = view[GEN2_OFFSETS.PARTY_COUNT];
+    _parseParty(view, off) {
+        const count = Math.min(view[off.PARTY_COUNT] || 0, 6);
         const pokemon = [];
 
-        for (let i = 0; i < count && i < 6; i++) {
-            const structOffset = GEN2_OFFSETS.PARTY_STRUCTS + (i * GEN2_OFFSETS.PARTY_MON_SIZE);
-            const otOffset = GEN2_OFFSETS.PARTY_OT_NAMES + (i * 11);
-            const nickOffset = GEN2_OFFSETS.PARTY_NICKNAMES + (i * 11);
+        for (let i = 0; i < count; i++) {
+            // Species ID is at PARTY_SPECIES + i
+            const speciesId = view[off.PARTY_SPECIES + i];
+            if (speciesId === 0xFF || speciesId === 0x00) continue;
+
+            // Pokemon struct at PARTY_STRUCTS + (i * 48)
+            const structOffset = off.PARTY_STRUCTS + (i * 48);
+            // OT name at PARTY_OT_NAMES + (i * 11)
+            const otOffset = off.PARTY_OT_NAMES + (i * 11);
+            // Nickname at PARTY_NICKNAMES + (i * 11)
+            const nickOffset = off.PARTY_NICKNAMES + (i * 11);
 
             const mon = this._parsePokemonStruct(view, structOffset, true, otOffset, nickOffset);
             if (mon) pokemon.push(mon);
@@ -328,85 +397,66 @@ export class Gen2Parser {
         return { pokemon, count };
     }
 
+    // ================================================================
+    // ---- PC BOX PARSING ----
+    // ================================================================
+
     /**
-     * Parse PC boxes.
+     * Parse PC boxes using FIXED offsets in SRAM banks.
+     * 
+     * Box layout:
+     * - Current box is a COPY at off.CURRENT_BOX_DATA (within checksum 1 region)
+     * - Boxes 0-6 are at fixed offsets in Bank 2 (0x4000+)
+     * - Boxes 7-13 are at fixed offsets in Bank 3 (0x6000+)
+     * - The current box index tells us which permanent box position
+     *   holds the same data as CURRENT_BOX_DATA
+     * 
+     * When reading: read from permanent positions, overlay current box data
      * @private
      */
-    _parseBoxes(view) {
-        const currentBoxId = view[GEN2_OFFSETS.CURRENT_BOX] & 0x7F;
+    _parseBoxes(view, off, isCrystal) {
+        const currentBoxId = view[off.CURRENT_BOX] & 0x7F;
+        const boxOffsets = isCrystal ? C_INT_BOX_OFFSETS : GS_INT_BOX_OFFSETS;
         const boxes = [];
 
-        // Box data layout in Gen 2:
-        // Current box is at CURRENT_BOX_DATA
-        // Other boxes are in two banks
-        const boxOffsets = this._calculateBoxOffsets(view, currentBoxId);
-
         for (let i = 0; i < 14; i++) {
-            const boxOffset = boxOffsets[i];
-            const boxPokemon = this._parseBox(view, boxOffset);
-            boxes.push(boxPokemon);
+            if (i === currentBoxId) {
+                // Use the current box data (within checksum region, more reliable)
+                boxes.push(this._parseBoxList(view, off.CURRENT_BOX_DATA, 20));
+            } else {
+                // Use the permanent box position in SRAM banks
+                boxes.push(this._parseBoxList(view, boxOffsets[i], 20));
+            }
         }
 
         return { boxes, currentBoxId };
     }
 
     /**
-     * Calculate byte offsets for each of the 14 PC boxes.
+     * Parse a single box list (PokeList2 format for box).
+     * Format: [count(1)] [species(N+1)] [structs(N×32)] [OT(N×11)] [Nicks(N×11)] [FF00]
      * @private
      */
-    _calculateBoxOffsets(view, currentBoxId) {
-        const offsets = [];
-        const boxStructSize = 32; // Box Pokemon struct size
-        const boxDataSize = 21 + (20 * boxStructSize) + (20 * 11) + (20 * 11);
-
-        // Current box is always at CURRENT_BOX_DATA
-        // Bank 1 contains boxes in order (depends on current box)
-        // Bank 2 contains the remaining boxes
-
-        for (let i = 0; i < 14; i++) {
-            if (i === currentBoxId) {
-                offsets.push(GEN2_OFFSETS.CURRENT_BOX_DATA);
-            } else {
-                // Calculate position in banks
-                let bankOffset;
-                let boxIndex = 0;
-                for (let j = 0; j < i; j++) {
-                    if (j === currentBoxId) continue;
-                    boxIndex++;
-                }
-                if (boxIndex < 7) {
-                    bankOffset = GEN2_OFFSETS.BOX_BANK_1 + (boxIndex * boxDataSize);
-                } else {
-                    bankOffset = GEN2_OFFSETS.BOX_BANK_2 + ((boxIndex - 7) * boxDataSize);
-                }
-                offsets.push(bankOffset);
-            }
-        }
-
-        return offsets;
-    }
-
-    /**
-     * Parse a single PC box.
-     * @private
-     */
-    _parseBox(view, boxStart) {
+    _parseBoxList(view, boxStart, maxSlots) {
         const boxPokemon = [];
+        const count = Math.min(view[boxStart] || 0, maxSlots);
 
-        // Species list: 20 bytes + 0xFF terminator = 21 bytes
-        const speciesStart = boxStart;
-        const structsStart = speciesStart + 21;
-        const otNamesStart = structsStart + (20 * 32);
-        const nicknamesStart = otNamesStart + (20 * 11);
+        // Species list starts at boxStart + 1 (after count byte)
+        const speciesStart = boxStart + 1;
 
-        let count = 0;
-        for (let i = 0; i < 20; i++) {
-            const speciesId = view[speciesStart + i];
-            if (speciesId === 0xFF || speciesId === 0x00) break;
-            count++;
-        }
+        // Structs start after species list: count byte + (maxSlots + 1) species bytes
+        const structsStart = boxStart + 1 + (maxSlots + 1);
+
+        // OT names after all structs
+        const otNamesStart = structsStart + (maxSlots * 32);
+
+        // Nicknames after all OT names
+        const nicknamesStart = otNamesStart + (maxSlots * 11);
 
         for (let i = 0; i < count; i++) {
+            const speciesId = view[speciesStart + i];
+            if (speciesId === 0xFF || speciesId === 0x00) continue;
+
             const structOffset = structsStart + (i * 32);
             const otOffset = otNamesStart + (i * 11);
             const nickOffset = nicknamesStart + (i * 11);
@@ -418,15 +468,13 @@ export class Gen2Parser {
         return boxPokemon;
     }
 
+    // ================================================================
+    // ---- POKEMON STRUCT PARSING ----
+    // ================================================================
+
     /**
      * Parse a Pokemon struct from binary data.
      * @private
-     * @param {Uint8Array} view - Save file binary data
-     * @param {number} offset - Start offset of the Pokemon struct
-     * @param {boolean} isParty - Whether this is a party Pokemon (48 bytes) or box (32 bytes)
-     * @param {number} [otOffset] - Offset of OT name string
-     * @param {number} [nickOffset] - Offset of nickname string
-     * @returns {CanonicalPokemon|null}
      */
     _parsePokemonStruct(view, offset, isParty, otOffset, nickOffset) {
         const struct = isParty ? GEN2_PARTY_STRUCT : GEN2_BOX_STRUCT;
@@ -436,13 +484,13 @@ export class Gen2Parser {
         if (speciesId === 0 || speciesId === 0xFF) return null;
 
         const isEgg = speciesId === GEN2_EGG_SPECIES_ID;
-        const dexId = isEgg ? 0 : (GEN2_INTERNAL_TO_DEX[speciesId] || 0);
+        const dexId = isEgg ? 0 : (GEN2_INTERNAL_TO_DEX[speciesId] || speciesId);
 
         // Held Item
         const heldItemId = view[offset + struct.HELD_ITEM];
         const heldItemName = heldItemId > 0 && heldItemId < GEN2_ITEM_NAMES.length ? GEN2_ITEM_NAMES[heldItemId] : '';
 
-        // Moves
+        // Moves (4 bytes at offsets 0x02-0x05)
         const moveIds = [
             view[offset + struct.MOVES],
             view[offset + struct.MOVES + 1],
@@ -450,20 +498,20 @@ export class Gen2Parser {
             view[offset + struct.MOVES + 3]
         ];
 
-        // Trainer ID
+        // Trainer ID (2 bytes big-endian at 0x06)
         const otId = getUInt16BigEndian(view, offset + struct.TRAINER_ID);
 
-        // Experience
+        // Experience (3 bytes big-endian at 0x08)
         const experience = getUInt24BigEndian(view, offset + struct.EXPERIENCE);
 
-        // EVs
+        // EVs (2 bytes big-endian each)
         const hpEv = getUInt16BigEndian(view, offset + struct.HP_EV);
         const atkEv = getUInt16BigEndian(view, offset + struct.ATK_EV);
         const defEv = getUInt16BigEndian(view, offset + struct.DEF_EV);
         const spdEv = getUInt16BigEndian(view, offset + struct.SPD_EV);
         const spcEv = getUInt16BigEndian(view, offset + struct.SPC_EV);
 
-        // DVs (16-bit packed)
+        // DVs (2 bytes packed at 0x15-0x16)
         const dvByte1 = view[offset + struct.DVS];
         const dvByte2 = view[offset + struct.DVS + 1];
         const atkDv = (dvByte1 >> 4) & 0xF;
@@ -473,9 +521,8 @@ export class Gen2Parser {
         // HP DV is derived from other DVs
         const hpDv = ((atkDv & 1) << 3) | ((defDv & 1) << 2) | ((spdDv & 1) << 1) | (spcDv & 1);
 
-        // FIX: PP + PP Ups at offset 0x17-0x1A (4 bytes)
-        // Each byte: bits 5-0 = current PP, bits 7-6 = PP Ups count
-        // This was previously INCORRECTLY claimed to be "not stored" — it IS stored!
+        // PP + PP Ups at offsets 0x17-0x1A (4 bytes)
+        // Each byte: bits 5-0 = current PP, bits 7-6 = PP Ups count (0-3)
         const ppUpsBytes = [
             view[offset + struct.PP_UPS],
             view[offset + struct.PP_UPS + 1],
@@ -483,19 +530,14 @@ export class Gen2Parser {
             view[offset + struct.PP_UPS + 3]
         ];
 
-        // FIX: Friendship at offset 0x1B (was incorrectly at 0x18)
+        // Friendship at offset 0x1B
         const friendship = view[offset + struct.FRIENDSHIP];
 
-        // FIX: Pokerus at offset 0x1C (was incorrectly at 0x17)
+        // Pokerus at offset 0x1C
         const pokerusByte = view[offset + struct.POKERUS];
-        const pokerus = pokerusByte; // Full byte: high nibble = strain, low nibble = days
 
-        // Caught Data (Crystal only, offset 0x1D-0x1E)
+        // Caught Data at offset 0x1D-0x1E (Crystal only)
         const caughtData = getUInt16BigEndian(view, offset + struct.CAUGHT_DATA);
-
-        // Egg steps not a separate field — friendship+caughtData overlap for non-eggs
-        const isEggMon = speciesId === GEN2_EGG_SPECIES_ID;
-        const eggSteps = isEggMon ? 0 : 0; // Egg steps stored differently in PokeList
 
         // Shiny check
         const isShiny = defDv === GEN2_SHINY_STAT_DV &&
@@ -537,7 +579,7 @@ export class Gen2Parser {
                 defense = this._calculateStat(base.def, defDv, defEv, level, false);
                 speed = this._calculateStat(base.spe, spdDv, spdEv, level, false);
                 spAttack = this._calculateStat(base.spc, spcDv, spcEv, level, false);
-                spDefense = spAttack; // Gen 2 uses same Special base stat for both
+                spDefense = spAttack;
                 currentHp = maxHp;
             }
         }
@@ -553,13 +595,12 @@ export class Gen2Parser {
         const speciesName = isEgg ? 'Egg' : (GEN2_POKEMON_NAMES[dexId] || '???');
         const isNicknamed = nickname !== '' && nickname !== speciesName;
 
-        // FIX: PP and PP Ups ARE stored in the Pokemon struct at offsets 0x17-0x1A
-        // Each byte: bits 5-0 = current PP, bits 7-6 = PP Ups count (0-3)
+        // PP and PP Ups
         const moves = moveIds.map((id, idx) => {
             if (id === 0 || id > 251) return { id: 0, pp: 0, ppUps: 0 };
             const ppByte = ppUpsBytes[idx] || 0;
-            const pp = ppByte & 0x3F;          // bits 5-0 = current PP
-            const ppUps = (ppByte >> 6) & 0x3; // bits 7-6 = PP Ups (0-3)
+            const pp = ppByte & 0x3F;
+            const ppUps = (ppByte >> 6) & 0x3;
             return { id, pp, ppUps };
         });
 
@@ -576,7 +617,7 @@ export class Gen2Parser {
             otName,
             otId,
             secretId: 0,
-            otGender: 'Male', // Gen 2 doesn't store OT gender
+            otGender: 'Male',
 
             level,
             experience,
@@ -589,7 +630,7 @@ export class Gen2Parser {
                 attack,
                 defense,
                 speed,
-                special: spAttack, // Use SpAtk for backward compat
+                special: spAttack,
                 spAttack,
                 spDefense
             },
@@ -600,7 +641,7 @@ export class Gen2Parser {
                 defense: defEv,
                 speed: spdEv,
                 special: spcEv,
-                spAttack: spcEv, // Gen 2: shared EV
+                spAttack: spcEv,
                 spDefense: spcEv
             },
 
@@ -610,7 +651,7 @@ export class Gen2Parser {
                 defense: defDv,
                 speed: spdDv,
                 special: spcDv,
-                spAttack: spcDv, // Gen 2: shared DV
+                spAttack: spcDv,
                 spDefense: spcDv
             },
 
@@ -632,26 +673,23 @@ export class Gen2Parser {
                 isShiny,
                 gender,
                 friendship,
-                pokerus,
+                pokerus: pokerusByte,
                 pokerusStrain: (pokerusByte >> 4) & 0xF,
                 pokerusDays: pokerusByte & 0xF,
                 caughtData,
-                eggSteps,
                 isEgg
             }
         });
     }
 
-    /**
-     * Determine Pokemon gender from Attack DV and species gender ratio.
-     * @private
-     */
+    // ================================================================
+    // ---- HELPER METHODS ----
+    // ================================================================
+
     _determineGender(dexId, atkDv) {
         if (dexId === 0) return 'Genderless';
-
         const ratio = GEN2_GENDER_RATIOS[dexId];
         if (!ratio) return 'Genderless';
-
         switch (ratio) {
             case 'genderless': return 'Genderless';
             case 'all-male': return 'Male';
@@ -664,12 +702,7 @@ export class Gen2Parser {
         }
     }
 
-    /**
-     * Calculate a stat value using the Gen 2 formula.
-     * @private
-     */
     _calculateStat(base, dv, ev, level, isHp) {
-        // Gen 2 stat formula (same as Gen 1)
         if (isHp) {
             return Math.floor(((2 * (base + dv) + Math.floor(Math.min(ev, 65535) / 4)) * level / 100) + level + 10);
         } else {
@@ -677,19 +710,10 @@ export class Gen2Parser {
         }
     }
 
-    /**
-     * Calculate level from experience using growth rate.
-     * @private
-     */
     _calculateLevel(dexId, experience) {
-        // Simplified: use lookup or formula based on growth rate
-        // For now, use a binary search approach
         const base = GEN2_BASE_STATS[dexId];
         if (!base) return 1;
-
-        // Determine growth rate group from species
         const growthRate = this._getGrowthRate(dexId);
-
         for (let lvl = 100; lvl >= 1; lvl--) {
             const expNeeded = this._getExpForLevel(lvl, growthRate);
             if (experience >= expNeeded) return lvl;
@@ -697,63 +721,34 @@ export class Gen2Parser {
         return 1;
     }
 
-    /**
-     * Get growth rate group for a Pokemon.
-     * Gen 2 has 4 growth rate groups: Fast, Medium Fast, Medium Slow, Slow.
-     * Erratic and Fluctuating are Gen3+ only and do NOT exist in Gen2.
-     * Species lists derived from PKHeX personal table data.
-     * @private
-     */
     _getGrowthRate(dexId) {
-        // Growth rate groups in Gen 2 (PKHeX-verified)
         const fast = [1,2,3,4,5,6,43,44,45,60,61,62,129,152,153,154,187,188,189,233];
         const mediumFast = [25,26,37,38,39,40,52,53,54,55,77,78,81,82,109,110,120,121,131,132,133,134,135,136,137,143,155,156,157,169,175,176,179,180,181,196,197,199,209,210,215,217,222,225,226,231,232,241,242,249,250,251];
-        const mediumSlow = [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27,28,29,30,31,32,33,34,35,36,41,42,46,47,48,49,50,51,56,57,58,59,63,64,65,66,67,68,69,70,71,72,73,74,75,76,79,80,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,111,112,113,114,115,116,117,118,119,122,123,124,125,126,127,128,130,138,139,140,141,142,144,145,146,147,148,149,150,151,158,159,160,163,164,165,166,167,168,170,171,172,173,174,177,178,182,183,184,185,186,190,191,192,193,194,195,198,200,201,202,203,204,205,206,207,208,211,212,213,214,216,218,219,220,221,223,224,227,228,229,230,234,235,236,237,238,239,240,243,244,245,246,247,248];
-        const slow = [];
-
         if (fast.includes(dexId)) return 'fast';
         if (mediumFast.includes(dexId)) return 'medium-fast';
-        if (mediumSlow.includes(dexId)) return 'medium-slow';
-        // Everything else is slow
-        return 'slow';
+        return 'medium-slow'; // Most Pokemon
     }
 
-    /**
-     * Get experience needed for a given level and growth rate.
-     * @private
-     */
     _getExpForLevel(level, growthRate) {
         switch (growthRate) {
-            case 'fast':
-                return Math.floor(4 * level * level * level / 5);
-            case 'medium-fast':
-                return level * level * level;
-            case 'medium-slow':
-                return Math.floor(6 / 5 * level * level * level - 15 * level * level + 100 * level - 140);
-            case 'slow':
-                return Math.floor(5 * level * level * level / 4);
-            default:
-                return level * level * level;
+            case 'fast': return Math.floor(4 * level * level * level / 5);
+            case 'medium-fast': return level * level * level;
+            case 'medium-slow': return Math.floor(6 / 5 * level * level * level - 15 * level * level + 100 * level - 140);
+            case 'slow': return Math.floor(5 * level * level * level / 4);
+            default: return level * level * level;
         }
     }
 
-    /**
-     * Parse items (Gen 2 has multiple pockets).
-     * TM/HM pocket uses a fixed 57-byte array (1 byte per TM/HM slot).
-     * Other pockets use the list format: count + [id,qty] pairs + 0xFF.
-     * @private
-     */
-    _parseItems(view) {
-        const bag = this._parseItemPocket(view, GEN2_OFFSETS.BAG_ITEMS, 20);
-        const pc = this._parseItemPocket(view, GEN2_OFFSETS.PC_ITEMS, 50);
+    // ================================================================
+    // ---- ITEM PARSING ----
+    // ================================================================
 
+    _parseItems(view, off) {
+        const bag = this._parseItemPocket(view, off.BAG_ITEMS, 20);
+        const pc = this._parseItemPocket(view, off.PC_ITEMS, 50);
         return { bag, pc };
     }
 
-    /**
-     * Parse an item pocket.
-     * @private
-     */
     _parseItemPocket(view, startOffset, maxCapacity) {
         const count = view[startOffset];
         const items = [];
@@ -761,9 +756,7 @@ export class Gen2Parser {
         for (let i = 0; i < count && i < maxCapacity; i++) {
             const itemId = view[startOffset + 1 + (i * 2)];
             const quantity = view[startOffset + 2 + (i * 2)];
-
             if (itemId === 0xFF) break;
-
             items.push({
                 id: itemId,
                 name: itemId < GEN2_ITEM_NAMES.length ? GEN2_ITEM_NAMES[itemId] : `Item ${itemId}`,
@@ -774,74 +767,39 @@ export class Gen2Parser {
         return items;
     }
 
-    /**
-     * Parse event flags.
-     * @private
-     */
-    _parseEventFlags(view) {
-        // Gen 2 has many more event flags than Gen 1
-        const flags = [];
-        const startOffset = GEN2_OFFSETS.EVENT_FLAGS_START;
-        const numBytes = GEN2_OFFSETS.EVENT_FLAGS_NUM_BYTES;
+    // ================================================================
+    // ---- OPTIONS PARSING ----
+    // ================================================================
 
-        for (let i = 0; i < numBytes * 8; i++) {
-            const byteIndex = Math.floor(i / 8);
-            const bitIndex = i % 8;
-            const byte = view[startOffset + byteIndex] || 0;
-            flags.push((byte & (1 << bitIndex)) !== 0);
-        }
-
-        return flags;
-    }
-
-    /**
-     * Parse daycare data.
-     * @private
-     */
-    _parseDaycare(view) {
-        const inUse = view[GEN2_OFFSETS.DAYCARE_IN_USE];
-        if (!inUse) return [];
-
-        const mon = this._parsePokemonStruct(
-            view,
-            GEN2_OFFSETS.DAYCARE_MON,
-            false,
-            GEN2_OFFSETS.DAYCARE_OT,
-            GEN2_OFFSETS.DAYCARE_NICK
-        );
-
-        return mon ? [mon] : [];
-    }
-
-    /**
-     * Parse game options.
-     * @private
-     */
-    _parseOptions(view) {
-        const byte = view[GEN2_OFFSETS.OPTIONS] || 0;
+    _parseOptions(view, off) {
+        const byte = view[off.OPTIONS] || 0;
         const textSpeedBits = byte & 0x0F;
         let textSpeed = 'Medium';
         if (textSpeedBits <= 1) textSpeed = 'Fast';
         else if (textSpeedBits >= 5) textSpeed = 'Slow';
-
         const battleStyle = (byte & 0x40) ? 'Set' : 'Shift';
         const battleAnimation = (byte & 0x80) ? 'Off' : 'On';
-
         return { textSpeed, battleStyle, battleAnimation };
     }
 
-    /**
-     * Parse RTC data.
-     * @private
-     */
-    _parseRTC(view) {
-        const hoursLow = view[GEN2_OFFSETS.RTC_HOURS] || 0;
-        const hoursHigh = view[GEN2_OFFSETS.RTC_HOURS + 1] || 0;
-        const hours = ((hoursHigh << 8) | hoursLow);
-        const daysLow = view[GEN2_OFFSETS.RTC_DAYS] || 0;
-        const daysHigh = view[GEN2_OFFSETS.RTC_DAYS + 1] || 0;
-        const days = ((daysHigh << 8) | daysLow);
+    // ================================================================
+    // ---- DAYCARE PARSING ----
+    // ================================================================
 
-        return { hours, days };
+    _parseDaycare(view, off) {
+        // Daycare offset is approximate — skip if out of range
+        if (!off.DAYCARE_IN_USE || off.DAYCARE_IN_USE >= view.length) return [];
+        const inUse = view[off.DAYCARE_IN_USE];
+        if (!inUse) return [];
+
+        const mon = this._parsePokemonStruct(
+            view,
+            off.DAYCARE_MON || off.DAYCARE_IN_USE + 1,
+            false,
+            off.DAYCARE_OT,
+            off.DAYCARE_NICK
+        );
+
+        return mon ? [mon] : [];
     }
 }

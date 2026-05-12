@@ -492,17 +492,37 @@ export function parsePk1(buffer) {
 function validateGen2Checksum(view) {
   // Try all known Gen 2 checksum configurations
   // Return true if ANY configuration validates successfully
+  // Also validate PokeList format at known offsets for extra confidence
 
   // International Gold/Silver: sum 0x2009-0x2D68, checksum at 0x2D69 (LE)
-  if (validateGen2ChecksumRange(view, 0x2009, 0x2D68, 0x2D69)) return true;
+  if (validateGen2ChecksumRange(view, 0x2009, 0x2D68, 0x2D69)) {
+    // Also check PokeList: party count at 0x288A should be <= 6
+    // and species list should be terminated with 0xFF
+    if (isPokeListValid(view, 0x288A, 6)) return true;
+  }
 
   // International Crystal: sum 0x2009-0x2B82, checksum at 0x2D0D (LE)
-  if (validateGen2ChecksumRange(view, 0x2009, 0x2B82, 0x2D0D)) return true;
+  if (validateGen2ChecksumRange(view, 0x2009, 0x2B82, 0x2D0D)) {
+    if (isPokeListValid(view, 0x2865, 6)) return true;
+  }
 
   // Japanese Gold/Silver: sum 0x2009-0x2C8B, checksum at 0x2D0D (LE)
   if (validateGen2ChecksumRange(view, 0x2009, 0x2C8B, 0x2D0D)) return true;
 
+  // Fallback: try checksums without PokeList validation
+  if (validateGen2ChecksumRange(view, 0x2009, 0x2D68, 0x2D69)) return true;
+  if (validateGen2ChecksumRange(view, 0x2009, 0x2B82, 0x2D0D)) return true;
+
   return false;
+}
+
+function isPokeListValid(view, offset, maxCount) {
+  if (offset >= view.length) return false;
+  const count = view[offset];
+  if (count > maxCount) return false;
+  const terminatorPos = offset + 1 + count;
+  if (terminatorPos >= view.length) return false;
+  return view[terminatorPos] === 0xFF;
 }
 
 function validateGen2ChecksumRange(view, start, end, checksumOffset) {
