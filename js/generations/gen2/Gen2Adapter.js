@@ -23,6 +23,7 @@ import { Gen2Parser } from './Gen2Parser.js';
 import { Gen2Writer } from './Gen2Writer.js';
 import { Gen2Validator } from './Gen2Validator.js';
 import { Gen2Schema } from './Gen2Schema.js';
+import { Gen2FieldValidator } from './Gen2FieldValidator.js';
 import { GEN2_INTERNAL_TO_DEX } from './constants.js';
 import { GEN2_POKEMON_NAMES } from './data/pokemonData.js';
 import { GEN2_POKEMON_TYPES, GEN2_GENDER_RATIOS } from './data/pokemonData.js';
@@ -42,6 +43,7 @@ export class Gen2Adapter extends BaseAdapter {
         this.parser = new Gen2Parser();
         this.writer = new Gen2Writer();
         this.validator = new Gen2Validator();
+        this.fieldValidator = new Gen2FieldValidator();
         // Manual game version override — allows users to disambiguate
         // Gold from Silver, since they cannot be distinguished from save data alone.
         this._manualGameVersion = null;

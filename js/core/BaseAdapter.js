@@ -263,6 +263,16 @@ export class BaseAdapter {
     // ================================================================
 
     /**
+     * Get the FieldValidator for this generation.
+     * Each adapter has its own fieldValidator instance providing per-generation
+     * validation rules for trainer, pokemon, inventory, and capacity fields.
+     * @returns {import('../validation/BaseFieldValidator.js').BaseFieldValidator}
+     */
+    getFieldValidator() {
+        return this.fieldValidator || null;
+    }
+
+    /**
      * Get the maximum party size for this generation.
      * @returns {number}
      */

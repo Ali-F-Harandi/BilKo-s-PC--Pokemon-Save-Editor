@@ -25,6 +25,7 @@ export { Gen2TextCodec } from './textCodec/Gen2TextCodec.js';
 
 // Validation (Phase 4)
 export { ChecksumAlgorithms } from './validation/ChecksumAlgorithms.js';
+export { BaseFieldValidator, getFieldValidator, validateField, clampValue, registerFieldValidator } from './validation/FieldValidator.js';
 
 // Legality (Phase 6)
 export { LegalityChecker, LegalityResult } from './legality/LegalityChecker.js';

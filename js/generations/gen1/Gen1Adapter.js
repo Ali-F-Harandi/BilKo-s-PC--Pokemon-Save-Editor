@@ -25,6 +25,7 @@ import { getItemName } from '../../data/items.js';
 import { GEN1_BASE_STATS, GEN1_CATCH_RATES } from '../../data/baseStats.js';
 import { calculateGen1Stat, recalculateStats } from '../../engine/statCalculator.js';
 import { Gen1TextCodec } from '../../core/textCodec/Gen1TextCodec.js';
+import { Gen1FieldValidator } from './Gen1FieldValidator.js';
 import { getAsciiString } from '../../engine/byteHelpers.js';
 import { getGrowthRate, getLevelFromExp, getExpAtLevel } from '../../data/experience.js';
 import { TYPE_COLORS } from '../../data/gameData.js';
@@ -37,6 +38,7 @@ export class Gen1Adapter extends BaseAdapter {
         this.parser = new Gen1Parser();
         this.writer = new Gen1Writer();
         this.validator = new Gen1Validator();
+        this.fieldValidator = new Gen1FieldValidator();
         this._textCodec = new Gen1TextCodec('en');
     }
 

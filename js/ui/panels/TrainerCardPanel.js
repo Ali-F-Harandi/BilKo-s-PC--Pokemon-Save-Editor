@@ -8,8 +8,11 @@
  * styled identically to the view-mode text. Save/Cancel buttons
  * replace Edit Card button in the same position with matching style.
  *
- * Validation: Uses FieldValidator for per-generation constraints.
+ * Validation: Uses generation-specific FieldValidator (OOP pattern).
  * Badge toggle: Clicking badges in edit mode toggles earned/unearned.
+ *   - Earned badges: full color image + colored background
+ *   - Unearned badges: grayscale image + grayscale background
+ * Real-time capping: Values are clamped as you type.
  */
 
 import { Events } from '../../state/eventBus.js';
@@ -113,8 +116,21 @@ function _renderTrainerDisplayFields(trainer, isYellow, data, adapter) {
     return html;
 }
 
+// ---- Play Time Helper ----
+function _parsePlayTime(str) {
+    if (!str) return { hours: 0, minutes: 0 };
+    const match = String(str).match(/^(\d+)h\s*(\d+)m$/);
+    if (match) return { hours: parseInt(match[1], 10), minutes: parseInt(match[2], 10) };
+    return { hours: 0, minutes: 0 };
+}
+
+function _formatPlayTime(hours, minutes) {
+    return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+}
+
 // ---- Edit Mode Fields ----
 // Each input uses FieldValidator constraints for min/max/maxLength
+// Real-time capping: data-realtime-cap attribute triggers input event listener
 function _renderTrainerEditFields(form, trainer, isYellow, adapter, validator) {
     let html = '';
     const gen = validator.generationId;
@@ -122,33 +138,40 @@ function _renderTrainerEditFields(form, trainer, isYellow, adapter, validator) {
     // Rival Name (maxLength from validator)
     const rivalMaxLen = validator.getMaxLength('trainer', 'rivalName') || 7;
     html += _editStatBlock('Rival',
-        `<input id="edit-rival" class="${_editInputCls}" maxlength="${rivalMaxLen}" value="${form.rivalName ?? trainer.rivalName ?? ''}" placeholder="Rival">`,
+        `<input id="edit-rival" class="${_editInputCls}" maxlength="${rivalMaxLen}" value="${form.rivalName ?? trainer.rivalName ?? ''}" placeholder="Rival" data-realtime-validate="trainer.rivalName">`,
         'hover:border-red-300 dark:hover:border-red-700');
 
     // Money (clamped to max from validator)
     const moneyMax = validator.getMax('trainer', 'money') ?? 999999;
     html += _editStatBlock('Money',
-        `<div class="flex items-center gap-1 justify-end w-full"><span class="text-xl font-black text-gray-900 dark:text-white tracking-tight">&yen;</span><input id="edit-money" type="number" min="0" max="${moneyMax}" class="${_editInputClsNum}" value="${validator.clamp('trainer', 'money', form.money ?? trainer.money ?? 0)}"></div>`,
+        `<div class="flex items-center gap-1 justify-end w-full"><span class="text-xl font-black text-gray-900 dark:text-white tracking-tight">&yen;</span><input id="edit-money" type="number" min="0" max="${moneyMax}" class="${_editInputClsNum}" value="${validator.clamp('trainer', 'money', form.money ?? trainer.money ?? 0)}" data-realtime-cap="trainer.money"></div>`,
         'hover:border-yellow-300 dark:hover:border-yellow-700');
 
     // Casino Coins (Gen1 only)
     if (gen === 1) {
         const coinsMax = validator.getMax('trainer', 'coins') ?? 9999;
         html += _editStatBlock('Casino Coins',
-            `<input id="edit-coins" type="number" min="0" max="${coinsMax}" class="${_editInputClsNum}" value="${validator.clamp('trainer', 'coins', form.coins ?? trainer.coins ?? 0)}">`,
+            `<input id="edit-coins" type="number" min="0" max="${coinsMax}" class="${_editInputClsNum}" value="${validator.clamp('trainer', 'coins', form.coins ?? trainer.coins ?? 0)}" data-realtime-cap="trainer.coins">`,
             'hover:border-indigo-300 dark:hover:border-indigo-700');
     }
 
-    // Play Time
+    // Play Time — separate hours and minutes inputs
+    const pt = _parsePlayTime(form.playTime ?? trainer.playTime);
+    const ptMaxHours = validator.getMax('trainer', 'playTime') ?? 999;
     html += _editStatBlock('Play Time',
-        `<input id="edit-playtime" class="${_editInputCls}" value="${form.playTime ?? trainer.playTime ?? '0h 00m'}" placeholder="0h 00m">`,
+        `<div class="flex items-center gap-1 justify-end w-full">
+            <input id="edit-playtime-h" type="number" min="0" max="${ptMaxHours}" class="${_editInputClsNum} w-16" value="${pt.hours}" data-realtime-cap="trainer.playTime.hours">
+            <span class="text-lg font-black text-gray-400">h</span>
+            <input id="edit-playtime-m" type="number" min="0" max="59" class="${_editInputClsNum} w-14" value="${pt.minutes}" data-realtime-cap="trainer.playTime.minutes">
+            <span class="text-lg font-black text-gray-400">m</span>
+        </div>`,
         'hover:border-purple-300 dark:hover:border-purple-700');
 
     // Pikachu Friendship (Yellow only)
     if (isYellow) {
         const friendMax = validator.getMax('trainer', 'pikachuFriendship') ?? 255;
         html += _editStatBlock('Pikachu Friendship',
-            `<input id="edit-pikachu" type="number" min="0" max="${friendMax}" class="${_editInputClsNum}" value="${validator.clamp('trainer', 'pikachuFriendship', form.pikachuFriendship ?? trainer.pikachuFriendship ?? 0)}">`,
+            `<input id="edit-pikachu" type="number" min="0" max="${friendMax}" class="${_editInputClsNum}" value="${validator.clamp('trainer', 'pikachuFriendship', form.pikachuFriendship ?? trainer.pikachuFriendship ?? 0)}" data-realtime-cap="trainer.pikachuFriendship">`,
             'hover:border-yellow-300 dark:hover:border-yellow-700');
     }
 
@@ -182,20 +205,25 @@ function _renderBadgeGroup(badgeGroup, badgeStartIndex, trainer, isEditing, form
         }
 
         // In edit mode, badges are clickable and toggle earned/unearned
-        // Earned = full color + full opacity + slight scale up
-        // Unearned = grayscale + low opacity + slight scale down
+        // Earned = full color image + colored background
+        // Unearned = grayscale image + desaturated background
         const earnedClasses = earned
-            ? 'grayscale-0 opacity-100 scale-110 drop-shadow-lg'
-            : 'grayscale opacity-30 scale-90';
+            ? 'opacity-100 scale-110 drop-shadow-lg'
+            : 'opacity-40 scale-90';
         const editClasses = isEditing ? 'cursor-pointer hover:scale-125 hover:opacity-80' : '';
         const earnedBg = earned
             ? 'bg-gradient-to-br from-yellow-100 to-amber-50 dark:from-yellow-900/30 dark:to-amber-900/20 border-amber-200 dark:border-amber-800'
-            : 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700';
+            : 'bg-gray-100 dark:bg-gray-800/50 border-gray-300 dark:border-gray-600';
+
+        // Apply grayscale filter to both the container AND the image for unearned badges
+        // This ensures the badge image itself becomes black and white
+        const imgStyle = earned ? '' : 'filter: grayscale(100%); opacity: 0.5;';
+        const containerStyle = earned ? '' : 'filter: grayscale(80%);';
 
         return `
         <div class="flex flex-col items-center gap-1">
-            <div data-badge-index="${i}" class="w-11 h-11 flex items-center justify-center rounded-xl border-2 transition-all duration-300 ${earnedClasses} ${editClasses} ${earnedBg}" title="${badge.name} (${badge.region})${isEditing ? ' — Click to toggle' : ''}">
-                <img src="${BADGE_SPRITE_BASE}/${i + 1}.png" alt="${badge.name}" class="w-8 h-8 object-contain pixelated" onerror="this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png'">
+            <div data-badge-index="${i}" class="w-11 h-11 flex items-center justify-center rounded-xl border-2 transition-all duration-300 ${earnedClasses} ${editClasses} ${earnedBg}" style="${containerStyle}" title="${badge.name} (${badge.region})${isEditing ? ' — Click to toggle' : ''}">
+                <img src="${BADGE_SPRITE_BASE}/${i + 1}.png" alt="${badge.name}" class="w-8 h-8 object-contain pixelated" style="${imgStyle}" onerror="this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png'">
             </div>
             <span class="text-[8px] font-bold ${earned ? 'text-gray-600 dark:text-gray-300' : 'text-gray-300 dark:text-gray-600'} uppercase tracking-wider">${badge.name}</span>
         </div>`;
@@ -300,12 +328,8 @@ export function render(data, appState, theme, eventBus, localState) {
     const displayName = isEditing ? (form.name || trainer.name) : trainer.name;
     const displayId = isEditing ? (form.id || trainer.id) : trainer.id;
 
-    // Play time for header pill
-    const displayPlayTime = isEditing ? (form.playTime ?? trainer.playTime ?? '0h 00m') : (trainer.playTime || '0h 00m');
-
     // Trainer name max length from validator
     const nameMaxLen = validator.getMaxLength('trainer', 'name') || 7;
-    const rivalMaxLen = validator.getMaxLength('trainer', 'rivalName') || 7;
     const idMax = validator.getMax('trainer', 'id') ?? 65535;
 
     return `
@@ -317,24 +341,24 @@ export function render(data, appState, theme, eventBus, localState) {
                 <div class="absolute inset-0 opacity-15 pointer-events-none" style="background-image: radial-gradient(circle at 10px 10px, white 2px, transparent 0); background-size: 20px 20px;"></div>
 
                 <div class="w-full flex justify-between items-start relative z-10">
-                    <!-- Trainer Name with semi-transparent background -->
+                    <!-- Trainer Name with dark semi-transparent background (readable on any header color) -->
                     <div class="flex-1 min-w-0 mr-3">
                         ${isEditing
-                            ? `<input id="edit-name" class="bg-black/25 backdrop-blur-sm rounded-lg px-2.5 py-1 border border-white/20 text-4xl font-black text-white italic tracking-tighter uppercase outline-none focus:bg-black/35 focus:border-white/40 placeholder-white/40 w-full transition-colors" maxlength="${nameMaxLen}" value="${form.name ?? trainer.name ?? ''}" placeholder="Name">`
-                            : `<h2 class="text-4xl font-black text-white italic tracking-tighter drop-shadow-md uppercase"><span class="bg-black/20 backdrop-blur-sm rounded-lg px-2.5 py-1 inline-block">${displayName}</span></h2>`}
+                            ? `<div class="rounded-lg px-2.5 py-1 border border-white/20" style="background-color: rgba(0,0,0,0.45);"><input id="edit-name" class="bg-transparent text-4xl font-black text-white italic tracking-tighter uppercase outline-none focus:outline-none placeholder-white/40 w-full border-0 p-0 m-0" style="-webkit-text-fill-color: white;" maxlength="${nameMaxLen}" value="${form.name ?? trainer.name ?? ''}" placeholder="Name" data-realtime-validate="trainer.name"></div>`
+                            : `<h2 class="text-4xl font-black text-white italic tracking-tighter drop-shadow-md uppercase"><span class="rounded-lg px-2.5 py-1 inline-block" style="background-color: rgba(0,0,0,0.35);">${displayName}</span></h2>`}
                     </div>
-                    <!-- Trainer ID with semi-transparent background -->
-                    <div class="text-right bg-black/25 backdrop-blur-sm rounded-lg px-2.5 py-1.5 border border-white/20 shrink-0">
+                    <!-- Trainer ID with dark semi-transparent background -->
+                    <div class="text-right rounded-lg px-2.5 py-1.5 border border-white/20 shrink-0" style="background-color: rgba(0,0,0,0.35);">
                         <span class="text-[10px] font-black text-white/70 uppercase tracking-widest block">Trainer ID</span>
                         ${isEditing
-                            ? `<input id="edit-id" type="number" min="0" max="${idMax}" class="bg-transparent border-0 border-b-2 border-white/40 text-xl font-black text-white tracking-widest leading-none outline-none focus:border-white/70 w-20 text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none transition-colors" value="${form.id ?? trainer.id ?? 0}">`
+                            ? `<input id="edit-id" type="number" min="0" max="${idMax}" class="border-0 border-b-2 border-white/40 text-xl font-black text-white tracking-widest leading-none outline-none focus:border-white/70 w-20 text-right bg-transparent [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none transition-colors" value="${form.id ?? trainer.id ?? 0}" data-realtime-cap="trainer.id">`
                             : `<div class="text-xl font-black text-white tracking-widest leading-none">${displayId}</div>`}
                     </div>
                 </div>
             </div>
 
-            <!-- Avatar Frame — positioned right of the header overlap -->
-            <div class="absolute top-16 left-16 z-20">
+            <!-- Avatar Frame — positioned to overlap header/body boundary -->
+            <div class="absolute top-20 left-16 z-20">
                 <div class="w-28 h-28 rounded-2xl bg-white dark:bg-gray-800 border-[6px] border-white dark:border-gray-700 shadow-[0_8px_20px_rgba(0,0,0,0.2)] overflow-hidden flex items-center justify-center relative transform -rotate-3">
                     <div class="absolute inset-0 bg-gray-100 dark:bg-gray-900 opacity-50"></div>
                     <img src="${trainerSprite}" alt="Trainer" class="w-full h-full object-contain p-2 pixelated scale-125 relative z-10" draggable="false" onerror="this.src='${TRAINER_SPRITE}'">
@@ -342,14 +366,10 @@ export function render(data, appState, theme, eventBus, localState) {
             </div>
 
             <!-- Main Content Body -->
-            <div class="px-5 pt-14 pb-6 space-y-3 flex-grow ${bodyBg}">
+            <div class="px-5 pt-14 pb-4 space-y-3 flex-grow ${bodyBg}">
 
-                <!-- Top Bar: Play Time + Edit/Save/Cancel Buttons -->
+                <!-- Top Bar: Edit/Save/Cancel Buttons (no Play Time — it's in the stats) -->
                 <div class="flex justify-end items-center gap-2 mb-2">
-                    <div class="flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg text-xs font-bold text-gray-500 uppercase border border-gray-100 dark:border-gray-700">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
-                        ${displayPlayTime}
-                    </div>
                     ${!isEditing ? `
                         <button id="trainer-edit-btn" class="${_actionBtnBase} bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800/40 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:shadow-md">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
@@ -405,10 +425,9 @@ export function render(data, appState, theme, eventBus, localState) {
                 <!-- Badges Section -->
                 ${badges.length > 0 ? _renderBadgesSection(badges, trainer, isEditing, form, adapter, hasJohtoBadges, hasKantoBadges) : ''}
 
+                <!-- Bottom Footer Accent (inside the card content) -->
+                <div class="h-1.5 w-full rounded-full mt-2" style="background-color: ${headerColor}"></div>
             </div>
-
-            <!-- Bottom Footer Accent -->
-            <div class="h-2 w-full" style="background-color: ${headerColor}"></div>
         </div>`;
 }
 
@@ -417,6 +436,77 @@ export function bindEvents(container, eventBus, theme, appState, localState, upd
     const badges = adapter ? adapter.getBadges() : [];
     const generationId = adapter ? adapter.generationId : 1;
     const validator = getFieldValidator(generationId);
+
+    // ---- Real-time Capping for Number Inputs ----
+    // Any input with data-realtime-cap="category.field" gets clamped on every keystroke
+    container.querySelectorAll('[data-realtime-cap]').forEach(input => {
+        input.addEventListener('input', () => {
+            const capKey = input.dataset.realtimeCap;
+            const parts = capKey.split('.');
+            if (parts.length !== 2 && parts.length !== 3) return;
+
+            const category = parts[0];
+            const field = parts[1];
+
+            // Special handling for playTime sub-fields
+            if (field === 'playTime') {
+                const subField = parts[2]; // 'hours' or 'minutes'
+                let val = parseInt(input.value, 10);
+                if (isNaN(val)) return;
+                if (subField === 'hours') {
+                    const maxHours = 999;
+                    val = Math.max(0, Math.min(maxHours, val));
+                } else if (subField === 'minutes') {
+                    val = Math.max(0, Math.min(59, val));
+                }
+                // Only update the input value if it was clamped (avoids cursor jumping)
+                if (parseInt(input.value, 10) !== val) {
+                    input.value = val;
+                }
+                // Update form
+                const hEl = container.querySelector('#edit-playtime-h');
+                const mEl = container.querySelector('#edit-playtime-m');
+                if (hEl && mEl && localState.trainerForm) {
+                    localState.trainerForm.playTime = _formatPlayTime(
+                        parseInt(hEl.value, 10) || 0,
+                        parseInt(mEl.value, 10) || 0
+                    );
+                }
+                return;
+            }
+
+            // Regular number field capping
+            const numVal = parseInt(input.value, 10);
+            if (isNaN(numVal)) return;
+            const clamped = validator.clamp(category, field, numVal);
+            if (numVal !== clamped) {
+                input.value = clamped;
+            }
+            // Update form live
+            if (localState.trainerForm) {
+                localState.trainerForm[field] = clamped;
+            }
+        });
+    });
+
+    // ---- Real-time Text Validation ----
+    container.querySelectorAll('[data-realtime-validate]').forEach(input => {
+        input.addEventListener('input', () => {
+            const valKey = input.dataset.realtimeValidate;
+            const parts = valKey.split('.');
+            if (parts.length !== 2) return;
+            const category = parts[0];
+            const field = parts[1];
+            const maxLen = validator.getMaxLength(category, field);
+            if (maxLen && input.value.length > maxLen) {
+                input.value = input.value.substring(0, maxLen);
+            }
+            // Update form live
+            if (localState.trainerForm) {
+                localState.trainerForm[field] = input.value;
+            }
+        });
+    });
 
     // ---- Edit Card Button ----
     const editBtn = container.querySelector('#trainer-edit-btn');
@@ -452,27 +542,38 @@ export function bindEvents(container, eventBus, theme, appState, localState, upd
             const idEl = container.querySelector('#edit-id');
             const moneyEl = container.querySelector('#edit-money');
             const coinsEl = container.querySelector('#edit-coins');
-            const playtimeEl = container.querySelector('#edit-playtime');
+            const playtimeHEl = container.querySelector('#edit-playtime-h');
+            const playtimeMEl = container.querySelector('#edit-playtime-m');
             const pikachuEl = container.querySelector('#edit-pikachu');
             const genderEl = container.querySelector('#edit-gender');
 
-            // Read badge state from form (toggled via click)
+            // Read badge state from form (toggled via click — form.badges is the source of truth)
             let badgesByte = 0;
-            container.querySelectorAll('[data-badge-index]').forEach(btn => {
-                const idx = Number(btn.dataset.badgeIndex);
-                // Badge is earned if NOT in grayscale/dimmed state
-                const isEarned = !btn.classList.contains('opacity-30');
-                if (isEarned) {
-                    badgesByte |= (1 << idx);
-                }
-            });
+            if (form.badges && Array.isArray(form.badges)) {
+                form.badges.forEach((earned, idx) => {
+                    if (earned) badgesByte |= (1 << idx);
+                });
+            } else {
+                // Fallback: read from DOM
+                container.querySelectorAll('[data-badge-index]').forEach(btn => {
+                    const idx = Number(btn.dataset.badgeIndex);
+                    const isEarned = !btn.style.filter || !btn.style.filter.includes('grayscale');
+                    if (isEarned) badgesByte |= (1 << idx);
+                });
+            }
+
+            // Build play time from hours/minutes inputs
+            const playTimeStr = _formatPlayTime(
+                parseInt(playtimeHEl?.value, 10) || 0,
+                parseInt(playtimeMEl?.value, 10) || 0
+            );
 
             // Validate each field using FieldValidator
             const nameVal = validator.validateField('trainer', 'name', nameEl?.value ?? form.name ?? '');
             const rivalVal = validator.validateField('trainer', 'rivalName', rivalEl?.value ?? form.rivalName ?? '');
             const idVal = validator.validateField('trainer', 'id', idEl?.value ? Number(idEl.value) : form.id);
             const moneyVal = validator.validateField('trainer', 'money', moneyEl?.value ? Number(moneyEl.value) : form.money);
-            const playTimeVal = validator.validateField('trainer', 'playTime', playtimeEl?.value || form.playTime);
+            const playTimeVal = validator.validateField('trainer', 'playTime', playTimeStr);
 
             // Build updates object with validated/clamped values
             const updates = {
@@ -545,3 +646,5 @@ export function bindEvents(container, eventBus, theme, appState, localState, upd
         });
     });
 }
+
+
