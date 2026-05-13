@@ -1,9 +1,10 @@
 /**
  * PartyPanel.js — Party Grid Panel
  *
- * Extracted from editorDashboard.js _renderHomeTab party section.
- * Renders 6 party slots with sprites, type badges, HP bars, drag/drop.
- * Supports selection highlighting via appState.getCurrentTabSelections().
+ * Redesigned with premium card styling: rounded-3xl cards,
+ * level pills, sprite boxes, bold type badges, HP bars.
+ * Selection highlighting via appState.getCurrentTabSelections().
+ * Supports drag/drop and long-press move mode.
  */
 
 import { Events } from '../../state/eventBus.js';
@@ -36,23 +37,49 @@ function _renderPartyCard(mon, index, isSelected, adapter) {
     if (!mon) return _renderEmptySlot('party', index);
     const types = _getTypesForMon(mon, adapter);
     const spriteUrl_ = spriteUrl(mon.dexId);
+
+    // HP bar color
+    const hpPct = mon.maxHp > 0 ? Math.max(0, Math.min(100, (mon.hp / mon.maxHp) * 100)) : 0;
+    const hpColor = hpPct > 50 ? 'bg-green-500' : hpPct > 20 ? 'bg-yellow-500' : 'bg-red-500';
+
     const selectedClasses = isSelected
-        ? 'ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-900/30 shadow-lg shadow-blue-500/20'
-        : 'bg-gray-50 dark:bg-gray-800';
+        ? 'ring-2 ring-blue-500 dark:ring-blue-400 border-blue-300 dark:border-blue-600 shadow-lg shadow-blue-500/20'
+        : 'bg-white border-gray-100 hover:border-gray-300 hover:shadow-xl hover:-translate-y-1';
 
     return `
-        <div class="${selectedClasses} rounded-xl p-3 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-all group"
+        <div class="rounded-3xl p-5 border-2 shadow-lg transition-all duration-300 relative group cursor-pointer ${selectedClasses}"
              data-party-index="${index}" draggable="true"
              data-drag-source='${JSON.stringify({ type: 'party', index })}'>
-            <div class="flex items-start gap-2">
-                <img src="${spriteUrl_}" alt="${mon.speciesName}" class="w-12 h-12 pixelated group-hover:scale-110 transition-transform" onerror="this.style.display='none'">
-                <div class="flex-1 min-w-0">
-                    <div class="font-bold text-sm text-gray-900 dark:text-white truncate">${mon.nickname || mon.speciesName}</div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">Lv.${mon.level} ${mon.speciesName}</div>
-                    <div class="flex gap-1 mt-0.5">${types.map(t => typeBadgeHTML(t)).join('')}</div>
+
+            <!-- Level Pill -->
+            <div class="absolute top-4 right-4 bg-gray-100 text-gray-500 text-[10px] font-black px-2 py-0.5 rounded-full tracking-widest uppercase">
+                LV <span class="text-gray-900">${mon.level || 1}</span>
+            </div>
+
+            <div class="flex items-start gap-4">
+                <!-- Sprite Box -->
+                <div class="bg-gray-50 rounded-2xl p-2 w-20 h-20 flex items-center justify-center shrink-0 border-2 border-gray-100 group-hover:bg-blue-50 group-hover:border-blue-100 transition-colors">
+                    <img src="${spriteUrl_}" alt="${mon.speciesName}" class="w-16 h-16 pixelated drop-shadow-sm group-hover:scale-110 transition-transform duration-300" onerror="this.src='${spriteUrl(0)}'">
+                </div>
+
+                <!-- Info -->
+                <div class="flex-1 pt-1">
+                    <div class="font-black text-xl text-gray-900 dark:text-white truncate tracking-tight uppercase">${mon.nickname || mon.speciesName}</div>
+                    <div class="text-xs font-bold text-gray-400 capitalize mb-2">${mon.speciesName}</div>
+                    <div class="flex gap-2">${types.map(t => typeBadgeHTML(t)).join('')}</div>
                 </div>
             </div>
-            ${hpBarHTML(mon.hp, mon.maxHp)}
+
+            <!-- HP Bar -->
+            <div class="mt-5">
+                <div class="flex items-center gap-2 mt-1">
+                    <span class="text-[9px] font-black tracking-widest text-gray-400 uppercase">HP</span>
+                    <div class="flex-grow bg-gray-100 rounded-full h-1.5 overflow-hidden shadow-inner">
+                        <div class="h-full rounded-full transition-all duration-500 ${hpColor}" style="width:${hpPct}%"></div>
+                    </div>
+                    <span class="text-[10px] font-bold text-gray-600 dark:text-gray-400 tracking-wider">${mon.hp}/${mon.maxHp}</span>
+                </div>
+            </div>
         </div>`;
 }
 
@@ -69,7 +96,7 @@ export function render(data, appState, theme, eventBus, localState) {
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-800 p-6">
         ${sectionHeaderHTML('heart', `Party (${data.party?.length || 0}/6)`, theme,
             `<span class="ml-auto bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs font-bold px-2 py-1 rounded-full">${data.party?.length || 0}</span>`)}
-        <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             ${(data.party || []).map((mon, i) => {
                 const isSelected = selections.some(s => s.type === 'party' && s.index === i);
                 return matchesSearchFilter(mon) ? _renderPartyCard(mon, i, isSelected, adapter) : _renderEmptySlot('party', i);

@@ -35,7 +35,7 @@ export function spriteUrl(dexId) {
 
 export function typeBadgeHTML(typeName) {
     const color = TYPE_COLORS[typeName] || '#999';
-    return `<span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold text-white" style="background-color:${color}">${typeName}</span>`;
+    return `<span class="inline-block px-2 py-0.5 rounded-md text-[10px] font-black uppercase text-white shadow-sm min-w-[40px] text-center select-none" style="background-color:${color}; box-shadow: 0 1px 2px rgba(0,0,0,0.15); text-shadow: 0 1px 2px rgba(0,0,0,0.3);"><span class="leading-none tracking-wider pt-[1px] inline-block">${typeName}</span></span>`;
 }
 
 export function typeDotsHTML(types) {
@@ -50,10 +50,12 @@ export function hpBarHTML(current, max) {
     const pct = max > 0 ? Math.max(0, Math.min(100, (current / max) * 100)) : 0;
     const color = pct > 50 ? 'bg-green-500' : pct > 20 ? 'bg-yellow-500' : 'bg-red-500';
     return `
-        <div class="flex items-center gap-1.5 text-[10px] mt-1">
-            <span class="text-gray-400 dark:text-gray-500">HP</span>
-            <div class="stat-bar-bg flex-grow"><div class="stat-bar-fill ${color}" style="width:${pct}%"></div></div>
-            <span class="text-gray-500 dark:text-gray-400 font-mono">${current}/${max}</span>
+        <div class="flex items-center gap-2 mt-1">
+            <span class="text-[9px] font-black tracking-widest text-gray-400 uppercase">HP</span>
+            <div class="flex-grow bg-gray-100 rounded-full h-1.5 overflow-hidden shadow-inner">
+                <div class="h-full rounded-full transition-all duration-500 ${color}" style="width:${pct}%"></div>
+            </div>
+            <span class="text-[10px] font-bold text-gray-600 dark:text-gray-400 tracking-wider">${current}/${max}</span>
         </div>`;
 }
 
@@ -91,8 +93,8 @@ export function sectionHeaderHTML(icon, title, theme, extra = '') {
 
 export function _renderEmptySlot(type, index) {
     return `
-        <div class="rounded-xl p-3 border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center min-h-[80px] text-gray-300 dark:text-gray-600 text-xs"
+        <div class="rounded-3xl p-5 border-2 border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center min-h-[130px] text-gray-300 dark:text-gray-600 text-xs font-bold uppercase tracking-wider"
              data-${type}-index="${index}">
-            Empty
+            Empty Slot
         </div>`;
 }
