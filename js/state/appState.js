@@ -443,43 +443,20 @@ export class AppState {
                     }
                     const versionStr = data.gameVersion || 'Gold';
 
+                    // Scalability: All Gen 2 versions require user confirmation.
                     // Gold and Silver cannot be distinguished from save data alone.
-                    // Crystal is unambiguous. For GS, show the version selector.
-                    if (versionStr === 'Gold' || versionStr === 'Silver') {
-                        // GS ambiguity — check if filename gives a clear hint
-                        const filename = (data.originalFilename || result._filename || '').toLowerCase();
-                        const isGoldHint = filename.includes('gold');
-                        const isSilverHint = filename.includes('silver');
-
-                        if (isGoldHint && !isSilverHint) {
-                            // Filename clearly says Gold
-                            data.gameVersion = 'Gold';
-                            this.createNewTab(data, 'Gold');
-                        } else if (isSilverHint && !isGoldHint) {
-                            // Filename clearly says Silver
-                            data.gameVersion = 'Silver';
-                            this.createNewTab(data, 'Silver');
-                        } else {
-                            // Ambiguous — show version selector for Gen 2 Gold/Silver
-                            this._pendingSaveData = data;
-                            this._eventBus.emit(Events.PENDING_SAVE_CHANGED, data);
-                            this._eventBus.emit(Events.OPEN_VERSION_SELECTOR, {
-                                filename: data.originalFilename || 'Unknown File',
-                                detectedVersion: versionStr,
-                                generationId: 2
-                            });
-                            // Queue processing pauses here until version is confirmed/cancelled
-                            return;
-                        }
-                    } else {
-                        // Crystal is unambiguous — create tab immediately
-                        this.createNewTab(data, versionStr);
-                    }
-                    this._fileQueue = this._fileQueue.slice(1);
-                    this._eventBus.emit(Events.FILE_QUEUE_UPDATED, {
-                        queue: this._fileQueue,
-                        isProcessing: this._isProcessingQueue
+                    // Crystal CAN be detected automatically, but the user still must
+                    // confirm because a "gold.sav" file could actually be a Silver save,
+                    // and filename hints are just hints, not guarantees.
+                    this._pendingSaveData = data;
+                    this._eventBus.emit(Events.PENDING_SAVE_CHANGED, data);
+                    this._eventBus.emit(Events.OPEN_VERSION_SELECTOR, {
+                        filename: data.originalFilename || 'Unknown File',
+                        detectedVersion: versionStr,
+                        generationId: 2
                     });
+                    // Queue processing pauses here until version is confirmed/cancelled
+                    return;
                 } else {
                     this._errorMessage = `Failed to parse Gen 2 save "${currentFile.name}".\n\nReason: ${gen2Result.error || 'Unknown error'}`;
                     this._eventBus.emit(Events.OPEN_ERROR_MODAL, this._errorMessage);
@@ -493,24 +470,21 @@ export class AppState {
                 const data = result.data;
                 const versionStr = data.gameVersion || 'Red';
 
-                if (versionStr === 'Yellow') {
-                    // Yellow is unambiguous — create tab immediately
-                    this.createNewTab(data, 'Yellow');
-                    this._fileQueue = this._fileQueue.slice(1);
-                    this._eventBus.emit(Events.FILE_QUEUE_UPDATED, {
-                        queue: this._fileQueue,
-                        isProcessing: this._isProcessingQueue
-                    });
-                } else {
-                    // Red/Blue ambiguity — show version selector
-                    this._pendingSaveData = data;
-                    this._eventBus.emit(Events.PENDING_SAVE_CHANGED, data);
-                    this._eventBus.emit(Events.OPEN_VERSION_SELECTOR, {
-                        filename: data.originalFilename || 'Unknown File',
-                        detectedVersion: versionStr
-                    });
-                    // Queue processing pauses here until version is confirmed/cancelled
-                }
+                // Scalability: All generations require user confirmation of game version.
+                // Even when auto-detection is confident, the user must confirm because:
+                // - Red/Blue cannot be distinguished from save data alone
+                // - Gold/Silver cannot be distinguished from save data alone
+                // - A save named "silver.sav" might actually be a Gold save
+                // The version selector shows the detected version as a hint, but the
+                // user makes the final choice. This pattern applies to all generations.
+                this._pendingSaveData = data;
+                this._eventBus.emit(Events.PENDING_SAVE_CHANGED, data);
+                this._eventBus.emit(Events.OPEN_VERSION_SELECTOR, {
+                    filename: data.originalFilename || 'Unknown File',
+                    detectedVersion: versionStr,
+                    generationId: 1
+                });
+                // Queue processing pauses here until version is confirmed/cancelled
             } else {
                 this._errorMessage = `Failed to load "${currentFile.name}".\n\nReason: ${result.error}`;
                 this._eventBus.emit(Events.OPEN_ERROR_MODAL, this._errorMessage);

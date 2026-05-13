@@ -293,7 +293,8 @@ export class Gen2Adapter extends BaseAdapter {
         const typeIds = GEN2_POKEMON_TYPES[dexId];
         if (!typeIds) return ['Normal'];
         const typeNames = typeIds.map(id => GEN2_TYPE_NAMES[id] || 'Normal').filter(t => t && t !== '');
-        // For single-type Pokemon (type1 === type2), return only one type
+        // For single-type Pokemon (type1 === type2), return only one type name
+        // The editor/pokemonDetailView will show Type 2 as "—" for these
         if (typeNames.length === 2 && typeNames[0] === typeNames[1]) {
             return [typeNames[0]];
         }
@@ -449,6 +450,18 @@ export class Gen2Adapter extends BaseAdapter {
     supportsFeature(feature) {
         const supported = ['heldItems', 'shiny', 'gender', 'friendship', 'pokerus', 'eggSteps', 'ppUps', 'legality', 'caughtData'];
         return supported.includes(feature);
+    }
+
+    // ================================================================
+    // ---- VERSION METADATA (Scalability) ----
+    // ================================================================
+
+    getSupportedVersions() {
+        return [
+            { id: 'gold',    label: 'GOLD',    sublabel: 'Gold Version',    gradient: 'linear-gradient(135deg, #DAA520 0%, #B8860B 100%)' },
+            { id: 'silver',  label: 'SILVER',  sublabel: 'Silver Version',  gradient: 'linear-gradient(135deg, #C0C0C0 0%, #808080 100%)' },
+            { id: 'crystal', label: 'CRYSTAL', sublabel: 'Crystal Version', gradient: 'linear-gradient(135deg, #4FD0E7 0%, #2BA0B7 100%)' },
+        ];
     }
 
     // ================================================================

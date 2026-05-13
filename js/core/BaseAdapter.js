@@ -425,4 +425,33 @@ export class BaseAdapter {
     supportsFeature(feature) {
         return false;
     }
+
+    // ================================================================
+    // ---- VERSION METADATA (Scalability for Gen 3+) ----
+    // ================================================================
+
+    /**
+     * Get the list of supported game versions with display metadata.
+     * Used by the version selector UI to dynamically build version buttons.
+     *
+     * Each entry contains:
+     * - id: lowercase game ID (matches gameIds array)
+     * - label: uppercase display label for the button
+     * - sublabel: descriptive text under the label
+     * - gradient: CSS gradient for the button background
+     *
+     * Scalability: When adding Gen 3+, just override this method in the new adapter.
+     * The version selector UI will automatically render the correct buttons.
+     *
+     * @returns {Array<{id: string, label: string, sublabel: string, gradient: string}>}
+     */
+    getSupportedVersions() {
+        // Default implementation derives from gameIds with generic styling
+        return this.gameIds.map(id => ({
+            id,
+            label: id.toUpperCase(),
+            sublabel: `${id.charAt(0).toUpperCase() + id.slice(1)} Version`,
+            gradient: 'linear-gradient(135deg, #666 0%, #333 100%)'
+        }));
+    }
 }

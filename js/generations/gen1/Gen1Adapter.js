@@ -299,6 +299,18 @@ export class Gen1Adapter extends BaseAdapter {
     }
 
     // ================================================================
+    // ---- VERSION METADATA (Scalability) ----
+    // ================================================================
+
+    getSupportedVersions() {
+        return [
+            { id: 'red',    label: 'RED',    sublabel: 'Red Version',    gradient: 'linear-gradient(135deg, #FF3B3B 0%, #cc2200 100%)' },
+            { id: 'blue',   label: 'BLUE',   sublabel: 'Blue Version',   gradient: 'linear-gradient(135deg, #3B4CCA 0%, #2233aa 100%)' },
+            { id: 'yellow', label: 'YELLOW', sublabel: 'Yellow Version', gradient: 'linear-gradient(135deg, #FFD733 0%, #cc9900 100%)' },
+        ];
+    }
+
+    // ================================================================
     // ---- LEGALITY & DATA ACCESS (Phase 6) ----
     // ================================================================
 

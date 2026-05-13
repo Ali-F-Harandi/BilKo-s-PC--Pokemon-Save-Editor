@@ -586,10 +586,13 @@ export class Gen2Parser {
 
         // Types
         const typeIds = GEN2_POKEMON_TYPES[dexId] || [0, 0];
-        // For single-type Pokemon (type1 === type2), only return one type name
+        // For single-type Pokemon (type1 === type2), Type 2 should be null/empty.
+        // This ensures the editor shows "—" for Type 2 and the user can add a
+        // secondary type later, or remove it by selecting "—" again.
         let typeNames;
         if (typeIds[0] === typeIds[1]) {
-            typeNames = [GEN2_TYPE_NAMES[typeIds[0]] || 'Normal'];
+            // Solo-type: Type 2 is empty/null
+            typeNames = [GEN2_TYPE_NAMES[typeIds[0]] || 'Normal', ''];
         } else {
             typeNames = typeIds.map(t => GEN2_TYPE_NAMES[t] || '');
         }
@@ -661,7 +664,7 @@ export class Gen2Parser {
                 spDefense: spcDv
             },
 
-            types: typeIds,
+            types: typeIds[0] === typeIds[1] ? [typeIds[0], 0] : typeIds,
             typeNames,
 
             status,

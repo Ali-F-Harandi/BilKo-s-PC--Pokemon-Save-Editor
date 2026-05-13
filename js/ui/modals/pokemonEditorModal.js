@@ -36,6 +36,7 @@ let localMon = null, isDirty = false, editorMeta = null, currentAdapter = null;
 
 /**
  * Normalize a Pokemon object from parser format to editor format.
+ * Handles solo-type Pokemon: if type1 === type2, sets type2 to empty (solo-type).
  */
 function normalizeForEditor(mon) {
     const normalized = { ...mon };
@@ -62,11 +63,30 @@ function normalizeForEditor(mon) {
         });
     }
 
+    // Fix solo-type Pokemon: if type1Name === type2Name, set type2 to empty
+    // This applies to Gen 1 saves where both type bytes are the same for solo-type Pokemon
+    if (normalized.typeNames && normalized.typeNames.length >= 2) {
+        if (normalized.typeNames[0] && normalized.typeNames[1] && normalized.typeNames[0] === normalized.typeNames[1]) {
+            normalized.typeNames = [normalized.typeNames[0], ''];
+            normalized.types = [normalized.types?.[0] ?? 0, 0];
+        }
+    } else if (normalized.type1Name && normalized.type2Name && normalized.type1Name === normalized.type2Name) {
+        // Legacy format with separate type1Name/type2Name fields
+        normalized.type2Name = '';
+        normalized.typeNames = [normalized.type1Name, ''];
+        normalized.types = [normalized.types?.[0] ?? normalized.type1 ?? 0, 0];
+    } else if (!normalized.typeNames) {
+        // Build typeNames from individual fields
+        normalized.typeNames = [normalized.type1Name || normalized.typeNames?.[0] || '', normalized.type2Name || normalized.typeNames?.[1] || ''];
+    }
+
     return normalized;
 }
 
 /**
  * Denormalize a Pokemon object from editor format back to parser/writer format.
+ * Handles solo-type Pokemon: if type2 is empty, sets type2 = type1 for binary writers
+ * (Gen 1/2 binary format requires both type bytes, and solo-type stores same type in both).
  */
 function denormalizeForWriter(mon) {
     const denormed = { ...mon };
@@ -91,6 +111,26 @@ function denormalizeForWriter(mon) {
         denormed.movePpUps = mon.moves.map(m => m.ppUps || 0);
         denormed.moves = mon.moves.map(m => moveList[m.id] || '-');
     }
+
+    // Handle type denormalization for binary writers
+    // Gen 1/2 binary format stores type1 and type2 as separate bytes.
+    // For solo-type Pokemon, both bytes should contain the same type ID.
+    // In the editor, solo-type has type2Name='' and types[1]=0.
+    // We must fill in the correct values for the writer.
+    if (mon.typeNames) {
+        denormed.type1Name = mon.typeNames[0] || 'Normal';
+        // If Type 2 is empty (solo-type), use same type as Type 1 for binary format
+        denormed.type2Name = mon.typeNames[1] || mon.typeNames[0] || 'Normal';
+    }
+    if (mon.types) {
+        denormed.type1 = mon.types[0] || 0;
+        // If Type 2 is 0/empty (solo-type), use same type as Type 1 for binary format
+        denormed.type2 = mon.types[1] || mon.types[0] || 0;
+    }
+    // Also handle the legacy type1/type2 and type1Name/type2Name fields
+    if (mon.type1Name !== undefined) denormed.type1Name = mon.type1Name;
+    if (mon.type2Name !== undefined && mon.type2Name !== '') denormed.type2Name = mon.type2Name;
+    else if (mon.typeNames && !mon.typeNames[1]) denormed.type2Name = mon.typeNames[0] || 'Normal';
 
     return denormed;
 }
@@ -158,21 +198,25 @@ function calcAllStats(mon) {
 
 function typeBadges(dexId) {
   if (!currentAdapter) return '';
+  const colors = currentAdapter.getTypeColors();
+
   // Use localMon's typeNames if available (reflects user edits), otherwise fall back to adapter lookup
   if (localMon && localMon.typeNames && localMon.typeNames.length > 0) {
-    const colors = currentAdapter.getTypeColors();
-    // Filter out duplicate types for single-type Pokemon
-    let displayTypes = localMon.typeNames;
-    if (displayTypes.length === 2 && displayTypes[0] === displayTypes[1]) {
-      displayTypes = [displayTypes[0]];
-    }
-    return displayTypes.filter(t => t && t !== '').map(t =>
+    // Filter out empty/null type names (solo-type Pokemon have typeNames[1] = '')
+    // Also filter out duplicates where type1 === type2 (legacy Gen1 data)
+    const displayTypes = localMon.typeNames.filter((t, i) => {
+      if (!t || t === '') return false; // No empty type badges
+      // For index 1, skip if it's the same as type 1 (solo-type)
+      if (i === 1 && localMon.typeNames[0] && t === localMon.typeNames[0]) return false;
+      return true;
+    });
+    return displayTypes.map(t =>
       `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold text-white" style="background:${colors[t]||'#999'}">${t}</span>`
     ).join(' ');
   }
+  // Fallback to adapter lookup
   const types = currentAdapter.getPokemonTypes(dexId);
-  const colors = currentAdapter.getTypeColors();
-  return types.map(t =>
+  return types.filter(t => t && t !== '').map(t =>
     `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold text-white" style="background:${colors[t]||'#999'}">${t}</span>`
   ).join(' ');
 }
@@ -233,11 +277,26 @@ function renderSchemaSection(section, localMon, adapter) {
       </div>`;
     } else if (field.type === 'select' && field.source === 'typeList') {
       const typeIdx = field.key === 'type1' ? 0 : 1;
-      const currentType = localMon.typeNames?.[typeIdx] || localMon[`type${typeIdx+1}Name`] || '';
+      // Determine the current type for this select
+      // For Type 2 on solo-type Pokemon (typeNames[1] === '' or same as typeNames[0]),
+      // show "—" (empty value) as selected
+      let currentType = '';
+      if (typeIdx === 0) {
+        currentType = localMon.typeNames?.[0] || localMon.type1Name || '';
+      } else {
+        const t2 = localMon.typeNames?.[1];
+        const t1 = localMon.typeNames?.[0];
+        // Solo-type if: t2 is empty/null, OR t2 equals t1 (legacy Gen1 data)
+        if (!t2 || t2 === '' || (t1 && t2 === t1)) {
+          currentType = ''; // "—" selected
+        } else {
+          currentType = t2;
+        }
+      }
       html += `<div>
         <label class="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase mb-1 block">${field.label}</label>
         <select id="pe-schema-${field.key}" class="${inputCls}">
-          <option value="">—</option>
+          <option value="" ${currentType === '' ? 'selected' : ''}>—</option>
           ${typeList.map((t, i) => `<option value="${i}" ${t === currentType ? 'selected' : ''}>${t}</option>`).join('')}
         </select>
       </div>`;
@@ -476,10 +535,15 @@ function render(container, eventBus, theme, appState) {
       const internalIdx = internalMap.indexOf(idx);
       if (internalIdx >= 0) localMon.speciesId = internalIdx;
       const types = adapter.getPokemonTypes(idx);
+      // Set type names - for solo-type Pokemon (single element), Type 2 is empty
       localMon.type1Name = types[0] || 'Normal';
       localMon.type2Name = types[1] || '';  // Empty string for single-type Pokemon
-      localMon.typeNames = types;
-      localMon.types = types.length > 0 ? [types[0] === 'Normal' ? 0 : 0, types.length > 1 ? 0 : 0] : [0, 0];
+      localMon.typeNames = [types[0] || 'Normal', types[1] || ''];
+      // Set type IDs - for solo-type Pokemon, types[1] = 0
+      const typeList = adapter.getTypeList();
+      const type1Idx = typeList.indexOf(types[0]);
+      const type2Idx = types[1] ? typeList.indexOf(types[1]) : 0;
+      localMon.types = [type1Idx >= 0 ? type1Idx : 0, type2Idx >= 0 ? type2Idx : 0];
       calcAllStats(localMon);
       if (adapter.getCatchRate) localMon.catchRate = adapter.getCatchRate(idx);
       if (!localMon.isNicknamed && localMon.nickname) {
@@ -587,6 +651,7 @@ function render(container, eventBus, theme, appState) {
   // Type selects - update both typeNames and types arrays on localMon
   const type1El = document.getElementById('pe-schema-type1');
   if (type1El) type1El.addEventListener('change', () => {
+    // Type 1 should never be empty — it's the primary type
     const newType1 = adapter.getTypeList()[Number(type1El.value)] || 'Normal';
     localMon.type1Name = newType1;
     // Update typeNames array and types array for consistency across the app
@@ -599,11 +664,16 @@ function render(container, eventBus, theme, appState) {
   });
   const type2El = document.getElementById('pe-schema-type2');
   if (type2El) type2El.addEventListener('change', () => {
-    const newType2 = adapter.getTypeList()[Number(type2El.value)] || '';
+    // When user selects "—" (value=""), it means NO secondary type (solo-type Pokemon)
+    // Bug fix: Number("") === 0, and typeList[0] === "Normal", which incorrectly
+    // sets the secondary type to Normal. Instead, we must treat "" as null/empty.
+    const isEmptyType = type2El.value === '';
+    const newType2 = isEmptyType ? '' : (adapter.getTypeList()[Number(type2El.value)] || '');
     localMon.type2Name = newType2;
     // Update typeNames array and types array for consistency across the app
+    // For solo-type: typeNames[1] = '', types[1] = 0 (null type)
     localMon.typeNames = [localMon.typeNames?.[0] || 'Normal', newType2];
-    localMon.types = [localMon.types?.[0] ?? 0, Number(type2El.value)];
+    localMon.types = [localMon.types?.[0] ?? 0, isEmptyType ? 0 : Number(type2El.value)];
     // Update pe-types display immediately
     const peTypes = document.getElementById('pe-types');
     if (peTypes) peTypes.innerHTML = typeBadges(localMon.dexId);

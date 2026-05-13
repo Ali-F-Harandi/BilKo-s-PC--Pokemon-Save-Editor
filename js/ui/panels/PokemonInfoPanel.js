@@ -19,11 +19,13 @@ export function render(localMon, appState, generation = 1, adapter = null) {
         // First try using typeNames from the Pokemon data (reflects user edits)
         let types = [];
         if (localMon.typeNames && localMon.typeNames.length > 0) {
-            // Filter out duplicate types for single-type Pokemon (e.g., ['Normal', 'Normal'] → ['Normal'])
-            types = localMon.typeNames.filter(t => t && t !== '');
-            if (types.length === 2 && types[0] === types[1]) {
-                types = [types[0]];
-            }
+            // Filter out empty strings (solo-type Pokemon have typeNames[1] = '')
+            // and duplicate types (legacy Gen1 data where type1 === type2)
+            types = localMon.typeNames.filter((t, i) => {
+                if (!t || t === '') return false;
+                if (i === 1 && localMon.typeNames[0] && t === localMon.typeNames[0]) return false;
+                return true;
+            });
         } else {
             types = adapter.getPokemonTypes(dexId);
         }

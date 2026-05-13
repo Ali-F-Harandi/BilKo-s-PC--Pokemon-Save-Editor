@@ -12,15 +12,18 @@ import { spriteUrl, typeBadgeHTML, hpBarHTML, matchesSearchFilter, _renderEmptyS
 /**
  * Get types for a Pokemon using the adapter if available, falling back to typeNames from parsed data.
  * This ensures Gen 2 Pokemon types are correctly resolved.
+ * Handles solo-type Pokemon where typeNames[1] is '' (empty).
  */
 function _getTypesForMon(mon, adapter) {
     // First check if the Pokemon has typeNames from parsing
     if (mon.typeNames && mon.typeNames.length > 0) {
-        // Filter out duplicate types for single-type Pokemon
-        if (mon.typeNames.length === 2 && mon.typeNames[0] === mon.typeNames[1]) {
-            return [mon.typeNames[0]];
-        }
-        return mon.typeNames;
+        // Filter out empty strings (solo-type Pokemon have typeNames[1] = '')
+        // and duplicate types (legacy Gen1 data where type1 === type2)
+        return mon.typeNames.filter((t, i) => {
+            if (!t || t === '') return false;
+            if (i === 1 && mon.typeNames[0] && t === mon.typeNames[0]) return false;
+            return true;
+        });
     }
     // Fall back to adapter lookup
     if (adapter) {

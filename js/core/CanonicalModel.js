@@ -191,8 +191,8 @@ export class CanonicalPokemon {
             evs: legacyMon.ev ?? { hp: 0, attack: 0, defense: 0, speed: 0, special: 0, spAttack: 0, spDefense: 0 },
             ivs: legacyMon.iv ?? { hp: 0, attack: 0, defense: 0, speed: 0, special: 0, spAttack: 0, spDefense: 0 },
 
-            types: [legacyMon.type1 ?? 0, legacyMon.type2 ?? 0],
-            typeNames: [legacyMon.type1Name ?? '', legacyMon.type2Name ?? ''],
+            types: [legacyMon.type1 ?? 0, (legacyMon.type1 !== undefined && legacyMon.type2 !== undefined && legacyMon.type1 === legacyMon.type2) ? 0 : (legacyMon.type2 ?? 0)],
+            typeNames: [legacyMon.type1Name ?? '', (legacyMon.type1Name && legacyMon.type2Name && legacyMon.type1Name === legacyMon.type2Name) ? '' : (legacyMon.type2Name ?? '')],
 
             status: legacyMon.status ?? 'OK',
             isParty: legacyMon.isParty ?? false,
@@ -243,9 +243,11 @@ export class CanonicalPokemon {
             spDef: this.stats.spDefense,
 
             type1: this.types[0],
-            type2: this.types[1],
+            // For solo-type Pokemon (types[1] === 0), binary format requires type2 = type1
+            type2: this.types[1] || this.types[0],
             type1Name: this.typeNames[0],
-            type2Name: this.typeNames[1],
+            // For solo-type Pokemon (typeNames[1] === ''), binary format requires type2Name = type1Name
+            type2Name: this.typeNames[1] || this.typeNames[0],
 
             status: this.status,
             catchRate: this.genExtension?.catchRate ?? 0,
