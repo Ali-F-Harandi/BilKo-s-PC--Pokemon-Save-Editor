@@ -10,7 +10,7 @@
 
 import { Events } from '../../state/eventBus.js';
 import { initEditorTools } from './editorTools.js';
-import { DASHBOARD_TABS } from './shared/helpers.js';
+import { DASHBOARD_TABS, gameHeaderColor } from './shared/helpers.js';
 
 // ---- Tab Module Imports ----
 import * as DashboardTab from './tabs/DashboardTab.js';
@@ -140,7 +140,7 @@ function _render(container, eventBus, theme, appState) {
             <div id="editor-tools-container"></div>
             <div class="sticky top-[4.5rem] z-30 bg-gray-50/95 dark:bg-gray-950/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-800 px-4 py-2">
                 <div class="max-w-[100rem] mx-auto flex items-center gap-2 overflow-x-auto no-scrollbar">
-                    ${DASHBOARD_TABS.map(t => _renderTabButton(t, currentView)).join('')}
+                    ${DASHBOARD_TABS.map(t => _renderTabButton(t, currentView, theme)).join('')}
                 </div>
             </div>
             <div class="max-w-[100rem] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
@@ -166,15 +166,17 @@ function _render(container, eventBus, theme, appState) {
 // ---- TAB NAVIGATION ----
 // ================================================================
 
-function _renderTabButton(tab, activeView) {
+function _renderTabButton(tab, activeView, theme) {
     const isActive = activeView === tab.id;
+    const activeColor = gameHeaderColor(theme);
     return `
         <button data-dash-tab="${tab.id}"
             class="flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-300 ease-in-out shrink-0 h-10 select-none
                 ${isActive
-                    ? 'bg-blue-600 text-white shadow-md pr-4'
+                    ? 'text-white shadow-md pr-4'
                     : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 w-14 justify-center'
                 }"
+            ${isActive ? `style="background-color:${activeColor}"` : ''}
             title="${tab.label}"
         >
             <i data-lucide="${tab.icon}" class="w-[22px] h-[22px] ${isActive ? 'text-white' : ''}"></i>
@@ -198,15 +200,21 @@ function _updateActiveTab(container, appState, theme, eventBus) {
     const activeTab = appState.getActiveTab();
     if (!activeTab) return;
     const currentView = activeTab.currentView || 'home';
+    const activeColor = gameHeaderColor(theme);
 
     container.querySelectorAll('[data-dash-tab]').forEach(btn => {
         const tabId = btn.dataset.dashTab;
         const isActive = tabId === currentView;
         btn.className = `flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-300 ease-in-out shrink-0 h-10 select-none
             ${isActive
-                ? 'bg-blue-600 text-white shadow-md pr-4'
+                ? 'text-white shadow-md pr-4'
                 : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 w-14 justify-center'
             }`;
+        if (isActive) {
+            btn.style.backgroundColor = activeColor;
+        } else {
+            btn.style.backgroundColor = '';
+        }
         const label = btn.querySelector('span');
         if (label) {
             label.className = `font-bold text-sm whitespace-nowrap overflow-hidden transition-all duration-300

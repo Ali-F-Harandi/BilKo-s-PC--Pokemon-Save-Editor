@@ -7,12 +7,31 @@
  */
 
 import { Events } from '../../state/eventBus.js';
-import { getPokemonTypes } from '../../data/pokemonTypes.js';
 import { spriteUrl, typeDotsHTML, matchesSearchFilter } from '../editor/shared/helpers.js';
 import * as PCBoxNavigator from './PCBoxNavigator.js';
 
-function _renderBoxSlot(mon, index, selectedBox, isSelected) {
-    const types = getPokemonTypes(mon.dexId);
+/**
+ * Get types for a Pokemon using the adapter if available, falling back to typeNames from parsed data.
+ * This ensures Gen 2 Pokemon types are correctly resolved.
+ */
+function _getTypesForMon(mon, adapter) {
+    // First check if the Pokemon has typeNames from parsing
+    if (mon.typeNames && mon.typeNames.length > 0) {
+        // Filter out duplicate types for single-type Pokemon
+        if (mon.typeNames.length === 2 && mon.typeNames[0] === mon.typeNames[1]) {
+            return [mon.typeNames[0]];
+        }
+        return mon.typeNames;
+    }
+    // Fall back to adapter lookup
+    if (adapter) {
+        return adapter.getPokemonTypes(mon.dexId);
+    }
+    return ['Normal'];
+}
+
+function _renderBoxSlot(mon, index, selectedBox, isSelected, adapter) {
+    const types = _getTypesForMon(mon, adapter);
     const selectedClasses = isSelected
         ? 'ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-900/30 shadow-lg shadow-blue-500/20'
         : 'bg-gray-50 dark:bg-gray-800';
@@ -40,6 +59,7 @@ export function render(data, appState, theme, eventBus, localState) {
     const box = data.pcBoxes?.[boxIdx] || [];
     const isMoveMode = appState.getIsMoveMode();
     const selections = appState.getCurrentTabSelections();
+    const adapter = appState.getActiveAdapter();
 
     return `
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-800 p-6">
@@ -48,7 +68,7 @@ export function render(data, appState, theme, eventBus, localState) {
             ${Array.from({ length: 20 }, (_, i) => {
                 const mon = box[i];
                 const isSelected = selections.some(s => s.type === 'box' && s.boxIndex === boxIdx && s.index === i);
-                if (mon && matchesSearchFilter(mon)) return _renderBoxSlot(mon, i, localState.selectedBox, isSelected);
+                if (mon && matchesSearchFilter(mon)) return _renderBoxSlot(mon, i, localState.selectedBox, isSelected, adapter);
                 if (mon && !matchesSearchFilter(mon)) return _renderEmptyBoxSlot(i);
                 return _renderEmptyBoxSlot(i);
             }).join('')}

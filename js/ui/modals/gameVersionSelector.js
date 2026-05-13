@@ -6,10 +6,13 @@
  * Phase 5 Fix: Changed event from raw string 'pendingSaveDataChanged'
  * to Events.PENDING_SAVE_CHANGED constant for consistency.
  *
- * Phase 6: Will be fully implemented with cartridge UI
+ * Phase 6: Full implementation with cartridge UI
+ * Now supports both Gen 1 (Red/Blue) and Gen 2 (Gold/Silver) ambiguity.
  */
 
 import { EventBus, Events } from '../../state/eventBus.js';
+
+let _currentGenerationId = 1;
 
 export function initGameVersionSelector(container, eventBus, appState) {
     // Listen for pending save data changes using proper Events constant
@@ -30,6 +33,66 @@ export function initGameVersionSelector(container, eventBus, appState) {
 function _render(container, eventBus, appState, pendingData) {
     const filename = pendingData.originalFilename || 'Unknown File';
 
+    // Detect generation from pending data to show appropriate options
+    const generationId = pendingData.generationId || pendingData.generation || 1;
+    _currentGenerationId = generationId;
+
+    const isGen2 = generationId >= 2;
+
+    // Build version buttons based on generation
+    let versionButtonsHtml = '';
+    if (isGen2) {
+        versionButtonsHtml = `
+            <div class="flex gap-4 justify-center">
+                <!-- Gold Cartridge -->
+                <button id="version-gold-btn"
+                    class="flex-1 max-w-[140px] group relative overflow-hidden rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl active:scale-95"
+                    style="background: linear-gradient(135deg, #DAA520 0%, #B8860B 100%);">
+                    <div class="p-4 text-center text-white">
+                        <div class="text-2xl font-black mb-1">GOLD</div>
+                        <div class="text-xs opacity-70">Gold Version</div>
+                    </div>
+                    <div class="absolute top-2 right-2 w-3 h-3 rounded-full bg-white/30"></div>
+                </button>
+
+                <!-- Silver Cartridge -->
+                <button id="version-silver-btn"
+                    class="flex-1 max-w-[140px] group relative overflow-hidden rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl active:scale-95"
+                    style="background: linear-gradient(135deg, #C0C0C0 0%, #808080 100%);">
+                    <div class="p-4 text-center text-white">
+                        <div class="text-2xl font-black mb-1">SILVER</div>
+                        <div class="text-xs opacity-70">Silver Version</div>
+                    </div>
+                    <div class="absolute top-2 right-2 w-3 h-3 rounded-full bg-white/30"></div>
+                </button>
+            </div>`;
+    } else {
+        versionButtonsHtml = `
+            <div class="flex gap-4 justify-center">
+                <!-- Red Cartridge -->
+                <button id="version-red-btn"
+                    class="flex-1 max-w-[140px] group relative overflow-hidden rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl active:scale-95"
+                    style="background: linear-gradient(135deg, #FF3B3B 0%, #cc2200 100%);">
+                    <div class="p-4 text-center text-white">
+                        <div class="text-2xl font-black mb-1">RED</div>
+                        <div class="text-xs opacity-70">Red Version</div>
+                    </div>
+                    <div class="absolute top-2 right-2 w-3 h-3 rounded-full bg-white/30"></div>
+                </button>
+
+                <!-- Blue Cartridge -->
+                <button id="version-blue-btn"
+                    class="flex-1 max-w-[140px] group relative overflow-hidden rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl active:scale-95"
+                    style="background: linear-gradient(135deg, #3B4CCA 0%, #2233aa 100%);">
+                    <div class="p-4 text-center text-white">
+                        <div class="text-2xl font-black mb-1">BLUE</div>
+                        <div class="text-xs opacity-70">Blue Version</div>
+                    </div>
+                    <div class="absolute top-2 right-2 w-3 h-3 rounded-full bg-white/30"></div>
+                </button>
+            </div>`;
+    }
+
     container.innerHTML = `
         <div class="modal-overlay animate-fade-in z-[400]" id="version-selector-overlay">
             <div class="bg-white dark:bg-gray-900 w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 animate-zoom-in-95 overflow-hidden">
@@ -41,29 +104,7 @@ function _render(container, eventBus, appState, pendingData) {
                     <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">Could not auto-detect the version.</p>
                     <p class="text-xs text-gray-400 dark:text-gray-500 font-mono truncate mb-6">${escapeHtml(filename)}</p>
 
-                    <div class="flex gap-4 justify-center">
-                        <!-- Red Cartridge -->
-                        <button id="version-red-btn"
-                            class="flex-1 max-w-[140px] group relative overflow-hidden rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl active:scale-95"
-                            style="background: linear-gradient(135deg, #FF3B3B 0%, #cc2200 100%);">
-                            <div class="p-4 text-center text-white">
-                                <div class="text-2xl font-black mb-1">RED</div>
-                                <div class="text-xs opacity-70">Red Version</div>
-                            </div>
-                            <div class="absolute top-2 right-2 w-3 h-3 rounded-full bg-white/30"></div>
-                        </button>
-
-                        <!-- Blue Cartridge -->
-                        <button id="version-blue-btn"
-                            class="flex-1 max-w-[140px] group relative overflow-hidden rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl active:scale-95"
-                            style="background: linear-gradient(135deg, #3B4CCA 0%, #2233aa 100%);">
-                            <div class="p-4 text-center text-white">
-                                <div class="text-2xl font-black mb-1">BLUE</div>
-                                <div class="text-xs opacity-70">Blue Version</div>
-                            </div>
-                            <div class="absolute top-2 right-2 w-3 h-3 rounded-full bg-white/30"></div>
-                        </button>
-                    </div>
+                    ${versionButtonsHtml}
                 </div>
                 <div class="p-4 bg-gray-50 dark:bg-gray-950/50 border-t border-gray-100 dark:border-gray-800">
                     <button id="version-cancel-btn" class="w-full text-gray-500 font-bold text-sm hover:text-gray-800 dark:hover:text-gray-200 transition-colors py-1">Skip This File</button>
@@ -79,14 +120,27 @@ function _render(container, eventBus, appState, pendingData) {
         }
     });
 
-    document.getElementById('version-red-btn')?.addEventListener('click', () => {
-        container.innerHTML = '';
-        appState.handleVersionConfirm('Red');
-    });
-    document.getElementById('version-blue-btn')?.addEventListener('click', () => {
-        container.innerHTML = '';
-        appState.handleVersionConfirm('Blue');
-    });
+    if (isGen2) {
+        // Gen 2 version buttons
+        document.getElementById('version-gold-btn')?.addEventListener('click', () => {
+            container.innerHTML = '';
+            appState.handleVersionConfirm('Gold');
+        });
+        document.getElementById('version-silver-btn')?.addEventListener('click', () => {
+            container.innerHTML = '';
+            appState.handleVersionConfirm('Silver');
+        });
+    } else {
+        // Gen 1 version buttons
+        document.getElementById('version-red-btn')?.addEventListener('click', () => {
+            container.innerHTML = '';
+            appState.handleVersionConfirm('Red');
+        });
+        document.getElementById('version-blue-btn')?.addEventListener('click', () => {
+            container.innerHTML = '';
+            appState.handleVersionConfirm('Blue');
+        });
+    }
     document.getElementById('version-cancel-btn')?.addEventListener('click', () => {
         container.innerHTML = '';
         appState.handleVersionCancel();

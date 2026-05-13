@@ -436,9 +436,45 @@ export class AppState {
                 const gen2Result = await adapter.parseSaveFile(result._rawData, result._filename);
                 if (gen2Result.success && gen2Result.data) {
                     const data = gen2Result.data;
+                    // Ensure originalFilename is set to the actual file name
+                    // (Gen2Parser may use a default if filename wasn't passed correctly)
+                    if (!data.originalFilename || data.originalFilename === 'save.sav' || data.originalFilename === 'SAVE.SAV') {
+                        data.originalFilename = currentFile.name || result._filename || data.originalFilename;
+                    }
                     const versionStr = data.gameVersion || 'Gold';
-                    // Gen 2 games are unambiguous — create tab immediately
-                    this.createNewTab(data, versionStr);
+
+                    // Gold and Silver cannot be distinguished from save data alone.
+                    // Crystal is unambiguous. For GS, show the version selector.
+                    if (versionStr === 'Gold' || versionStr === 'Silver') {
+                        // GS ambiguity — check if filename gives a clear hint
+                        const filename = (data.originalFilename || result._filename || '').toLowerCase();
+                        const isGoldHint = filename.includes('gold');
+                        const isSilverHint = filename.includes('silver');
+
+                        if (isGoldHint && !isSilverHint) {
+                            // Filename clearly says Gold
+                            data.gameVersion = 'Gold';
+                            this.createNewTab(data, 'Gold');
+                        } else if (isSilverHint && !isGoldHint) {
+                            // Filename clearly says Silver
+                            data.gameVersion = 'Silver';
+                            this.createNewTab(data, 'Silver');
+                        } else {
+                            // Ambiguous — show version selector for Gen 2 Gold/Silver
+                            this._pendingSaveData = data;
+                            this._eventBus.emit(Events.PENDING_SAVE_CHANGED, data);
+                            this._eventBus.emit(Events.OPEN_VERSION_SELECTOR, {
+                                filename: data.originalFilename || 'Unknown File',
+                                detectedVersion: versionStr,
+                                generationId: 2
+                            });
+                            // Queue processing pauses here until version is confirmed/cancelled
+                            return;
+                        }
+                    } else {
+                        // Crystal is unambiguous — create tab immediately
+                        this.createNewTab(data, versionStr);
+                    }
                     this._fileQueue = this._fileQueue.slice(1);
                     this._eventBus.emit(Events.FILE_QUEUE_UPDATED, {
                         queue: this._fileQueue,

@@ -292,7 +292,12 @@ export class Gen2Adapter extends BaseAdapter {
     getPokemonTypes(dexId) {
         const typeIds = GEN2_POKEMON_TYPES[dexId];
         if (!typeIds) return ['Normal'];
-        return typeIds.map(id => GEN2_TYPE_NAMES[id] || 'Normal').filter(t => t && t !== '');
+        const typeNames = typeIds.map(id => GEN2_TYPE_NAMES[id] || 'Normal').filter(t => t && t !== '');
+        // For single-type Pokemon (type1 === type2), return only one type
+        if (typeNames.length === 2 && typeNames[0] === typeNames[1]) {
+            return [typeNames[0]];
+        }
+        return typeNames;
     }
 
     // ================================================================

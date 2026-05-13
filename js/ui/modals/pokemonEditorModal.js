@@ -158,6 +158,18 @@ function calcAllStats(mon) {
 
 function typeBadges(dexId) {
   if (!currentAdapter) return '';
+  // Use localMon's typeNames if available (reflects user edits), otherwise fall back to adapter lookup
+  if (localMon && localMon.typeNames && localMon.typeNames.length > 0) {
+    const colors = currentAdapter.getTypeColors();
+    // Filter out duplicate types for single-type Pokemon
+    let displayTypes = localMon.typeNames;
+    if (displayTypes.length === 2 && displayTypes[0] === displayTypes[1]) {
+      displayTypes = [displayTypes[0]];
+    }
+    return displayTypes.filter(t => t && t !== '').map(t =>
+      `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold text-white" style="background:${colors[t]||'#999'}">${t}</span>`
+    ).join(' ');
+  }
   const types = currentAdapter.getPokemonTypes(dexId);
   const colors = currentAdapter.getTypeColors();
   return types.map(t =>
@@ -465,8 +477,9 @@ function render(container, eventBus, theme, appState) {
       if (internalIdx >= 0) localMon.speciesId = internalIdx;
       const types = adapter.getPokemonTypes(idx);
       localMon.type1Name = types[0] || 'Normal';
-      localMon.type2Name = types[1] || types[0] || 'Normal';
+      localMon.type2Name = types[1] || '';  // Empty string for single-type Pokemon
       localMon.typeNames = types;
+      localMon.types = types.length > 0 ? [types[0] === 'Normal' ? 0 : 0, types.length > 1 ? 0 : 0] : [0, 0];
       calcAllStats(localMon);
       if (adapter.getCatchRate) localMon.catchRate = adapter.getCatchRate(idx);
       if (!localMon.isNicknamed && localMon.nickname) {
@@ -571,11 +584,31 @@ function render(container, eventBus, theme, appState) {
     markDirty(container, eventBus);
   });
 
-  // Type selects
+  // Type selects - update both typeNames and types arrays on localMon
   const type1El = document.getElementById('pe-schema-type1');
-  if (type1El) type1El.addEventListener('change', () => { localMon.type1Name = adapter.getTypeList()[Number(type1El.value)] || 'Normal'; markDirty(container, eventBus); });
+  if (type1El) type1El.addEventListener('change', () => {
+    const newType1 = adapter.getTypeList()[Number(type1El.value)] || 'Normal';
+    localMon.type1Name = newType1;
+    // Update typeNames array and types array for consistency across the app
+    localMon.typeNames = [newType1, localMon.typeNames?.[1] || ''];
+    localMon.types = [Number(type1El.value), localMon.types?.[1] ?? 0];
+    // Update pe-types display immediately
+    const peTypes = document.getElementById('pe-types');
+    if (peTypes) peTypes.innerHTML = typeBadges(localMon.dexId);
+    markDirty(container, eventBus);
+  });
   const type2El = document.getElementById('pe-schema-type2');
-  if (type2El) type2El.addEventListener('change', () => { localMon.type2Name = adapter.getTypeList()[Number(type2El.value)] || 'Normal'; markDirty(container, eventBus); });
+  if (type2El) type2El.addEventListener('change', () => {
+    const newType2 = adapter.getTypeList()[Number(type2El.value)] || '';
+    localMon.type2Name = newType2;
+    // Update typeNames array and types array for consistency across the app
+    localMon.typeNames = [localMon.typeNames?.[0] || 'Normal', newType2];
+    localMon.types = [localMon.types?.[0] ?? 0, Number(type2El.value)];
+    // Update pe-types display immediately
+    const peTypes = document.getElementById('pe-types');
+    if (peTypes) peTypes.innerHTML = typeBadges(localMon.dexId);
+    markDirty(container, eventBus);
+  });
 
   // IV sliders & inputs
   document.querySelectorAll('.pe-iv-range').forEach(el => {

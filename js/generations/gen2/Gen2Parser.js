@@ -585,8 +585,14 @@ export class Gen2Parser {
         }
 
         // Types
-        const types = GEN2_POKEMON_TYPES[dexId] || [0, 0];
-        const typeNames = types.map(t => GEN2_TYPE_NAMES[t] || '');
+        const typeIds = GEN2_POKEMON_TYPES[dexId] || [0, 0];
+        // For single-type Pokemon (type1 === type2), only return one type name
+        let typeNames;
+        if (typeIds[0] === typeIds[1]) {
+            typeNames = [GEN2_TYPE_NAMES[typeIds[0]] || 'Normal'];
+        } else {
+            typeNames = typeIds.map(t => GEN2_TYPE_NAMES[t] || '');
+        }
 
         // Nickname and OT Name
         const nickname = nickOffset !== undefined ? decodeGen2Text(view, nickOffset, 11) : '';
@@ -655,7 +661,7 @@ export class Gen2Parser {
                 spDefense: spcDv
             },
 
-            types,
+            types: typeIds,
             typeNames,
 
             status,

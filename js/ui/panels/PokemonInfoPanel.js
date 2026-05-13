@@ -16,7 +16,17 @@ export function render(localMon, appState, generation = 1, adapter = null) {
     // Types via adapter
     let typeBadgesHtml = '';
     if (adapter) {
-        const types = adapter.getPokemonTypes(dexId);
+        // First try using typeNames from the Pokemon data (reflects user edits)
+        let types = [];
+        if (localMon.typeNames && localMon.typeNames.length > 0) {
+            // Filter out duplicate types for single-type Pokemon (e.g., ['Normal', 'Normal'] → ['Normal'])
+            types = localMon.typeNames.filter(t => t && t !== '');
+            if (types.length === 2 && types[0] === types[1]) {
+                types = [types[0]];
+            }
+        } else {
+            types = adapter.getPokemonTypes(dexId);
+        }
         const colors = adapter.getTypeColors();
         typeBadgesHtml = types.map(t =>
             `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold text-white" style="background:${colors[t]||'#999'}">${t}</span>`

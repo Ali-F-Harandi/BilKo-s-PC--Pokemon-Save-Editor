@@ -3,12 +3,16 @@
  *
  * Extracted from editorDashboard.js _renderInventoryPanel.
  * Renders item list with tab switching (bag/pc) and sorting.
+ * Uses game theme color for active tab state.
  */
+
+import { gameHeaderColor } from '../editor/shared/helpers.js';
 
 export function render(data, theme, localState) {
     const view = localState.itemView;
     const items = view === 'bag' ? (data.items || []) : (data.pcItems || []);
     const sortBy = localState.itemSortBy;
+    const activeColor = gameHeaderColor(theme);
 
     let sorted = [...items];
     if (sortBy === 'name') sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -17,10 +21,10 @@ export function render(data, theme, localState) {
     return `
         <!-- Tabs -->
         <div class="flex gap-1 mb-3">
-            <button class="item-tab-btn flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${view === 'bag' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}" data-item-view="bag">
+            <button class="item-tab-btn flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${view === 'bag' ? 'text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}" ${view === 'bag' ? `style="background-color:${activeColor}"` : ''} data-item-view="bag">
                 <i data-lucide="shopping-bag" class="w-3 h-3 inline mr-1"></i>Bag
             </button>
-            <button class="item-tab-btn flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${view === 'pc' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}" data-item-view="pc">
+            <button class="item-tab-btn flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${view === 'pc' ? 'text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}" ${view === 'pc' ? `style="background-color:${activeColor}"` : ''} data-item-view="pc">
                 <i data-lucide="monitor" class="w-3 h-3 inline mr-1"></i>PC
             </button>
         </div>

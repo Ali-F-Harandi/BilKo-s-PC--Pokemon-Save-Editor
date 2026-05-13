@@ -7,12 +7,31 @@
  */
 
 import { Events } from '../../state/eventBus.js';
-import { getPokemonTypes } from '../../data/pokemonTypes.js';
 import { spriteUrl, typeBadgeHTML, hpBarHTML, matchesSearchFilter, _renderEmptySlot, sectionHeaderHTML } from '../editor/shared/helpers.js';
 
-function _renderPartyCard(mon, index, isSelected) {
+/**
+ * Get types for a Pokemon using the adapter if available, falling back to typeNames from parsed data.
+ * This ensures Gen 2 Pokemon types are correctly resolved.
+ */
+function _getTypesForMon(mon, adapter) {
+    // First check if the Pokemon has typeNames from parsing
+    if (mon.typeNames && mon.typeNames.length > 0) {
+        // Filter out duplicate types for single-type Pokemon
+        if (mon.typeNames.length === 2 && mon.typeNames[0] === mon.typeNames[1]) {
+            return [mon.typeNames[0]];
+        }
+        return mon.typeNames;
+    }
+    // Fall back to adapter lookup
+    if (adapter) {
+        return adapter.getPokemonTypes(mon.dexId);
+    }
+    return ['Normal'];
+}
+
+function _renderPartyCard(mon, index, isSelected, adapter) {
     if (!mon) return _renderEmptySlot('party', index);
-    const types = getPokemonTypes(mon.dexId);
+    const types = _getTypesForMon(mon, adapter);
     const spriteUrl_ = spriteUrl(mon.dexId);
     const selectedClasses = isSelected
         ? 'ring-2 ring-blue-500 dark:ring-blue-400 bg-blue-50 dark:bg-blue-900/30 shadow-lg shadow-blue-500/20'
@@ -42,6 +61,7 @@ function _renderEmptyPartySlots(count) {
 
 export function render(data, appState, theme, eventBus, localState) {
     const selections = appState.getCurrentTabSelections();
+    const adapter = appState.getActiveAdapter();
     return `
     <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-800 p-6">
         ${sectionHeaderHTML('heart', `Party (${data.party?.length || 0}/6)`, theme,
@@ -49,7 +69,7 @@ export function render(data, appState, theme, eventBus, localState) {
         <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
             ${(data.party || []).map((mon, i) => {
                 const isSelected = selections.some(s => s.type === 'party' && s.index === i);
-                return matchesSearchFilter(mon) ? _renderPartyCard(mon, i, isSelected) : _renderEmptySlot('party', i);
+                return matchesSearchFilter(mon) ? _renderPartyCard(mon, i, isSelected, adapter) : _renderEmptySlot('party', i);
             }).join('')}
             ${_renderEmptyPartySlots(data.party?.length || 0)}
         </div>
