@@ -15,6 +15,7 @@ import { Events } from '../../state/eventBus.js';
 import { CanonicalPokemon } from '../../core/CanonicalModel.js';
 import { GenerationRegistry } from '../../core/GenerationRegistry.js';
 import { AdapterFactory } from '../../core/AdapterFactory.js';
+import { getFieldValidator } from '../../core/validation/FieldValidator.js';
 
 // Lazy adapter factory
 let _adapterFactory = null;
@@ -731,6 +732,61 @@ function render(container, eventBus, theme, appState) {
 
   // --- Buttons ---
   const doSave = () => {
+    // Validate using FieldValidator before saving
+    const genId = adapter ? adapter.generationId : 1;
+    const validator = getFieldValidator(genId);
+
+    // Clamp level to valid range
+    localMon.level = validator.clamp('pokemon', 'level', localMon.level || 1);
+
+    // Clamp species to valid range
+    if (localMon.dexId) {
+      localMon.dexId = validator.clamp('pokemon', 'species', localMon.dexId);
+    }
+
+    // Clamp EVs
+    if (localMon.ev) {
+      for (const key of Object.keys(localMon.ev)) {
+        const evField = 'ev' + key.charAt(0).toUpperCase() + key.slice(1);
+        localMon.ev[key] = validator.clamp('pokemon', evField, localMon.ev[key]);
+      }
+    }
+
+    // Clamp IVs/DVs
+    if (localMon.iv) {
+      for (const key of Object.keys(localMon.iv)) {
+        const ivField = 'iv' + key.charAt(0).toUpperCase() + key.slice(1);
+        localMon.iv[key] = validator.clamp('pokemon', ivField, localMon.iv[key]);
+      }
+    }
+
+    // Clamp friendship
+    if (localMon.genExtension?.friendship !== undefined) {
+      localMon.genExtension.friendship = validator.clamp('pokemon', 'friendship', localMon.genExtension.friendship);
+    }
+
+    // Clamp pokerus
+    if (localMon.pokerus !== undefined) {
+      localMon.pokerus = validator.clamp('pokemon', 'pokerus', localMon.pokerus);
+    }
+
+    // Clamp PP Ups per move
+    if (localMon.moves) {
+      for (const move of localMon.moves) {
+        if (move) {
+          move.ppUps = Math.max(0, Math.min(3, move.ppUps || 0));
+          const basePP = adapter ? adapter.getMovePP(move.id) : 0;
+          const maxPP = basePP + Math.floor(basePP * move.ppUps / 5);
+          move.pp = Math.max(0, Math.min(maxPP, move.pp || 0));
+        }
+      }
+    }
+
+    // Clamp catch rate (Gen1)
+    if (localMon.catchRate !== undefined) {
+      localMon.catchRate = validator.clamp('pokemon', 'catchRate', localMon.catchRate);
+    }
+
     const denormedMon = denormalizeForWriter(localMon);
     const payload = { ...denormedMon, _source: editorMeta.source, _index: editorMeta.index, _boxIndex: editorMeta.boxIndex };
     eventBus.emit(Events.POKEMON_UPDATED, payload);
