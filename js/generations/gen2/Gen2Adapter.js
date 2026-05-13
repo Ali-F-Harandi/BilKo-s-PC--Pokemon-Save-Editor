@@ -42,6 +42,31 @@ export class Gen2Adapter extends BaseAdapter {
         this.parser = new Gen2Parser();
         this.writer = new Gen2Writer();
         this.validator = new Gen2Validator();
+        // Manual game version override — allows users to disambiguate
+        // Gold from Silver, since they cannot be distinguished from save data alone.
+        this._manualGameVersion = null;
+    }
+
+    /**
+     * Set a manual game version override.
+     * Use this when auto-detection cannot distinguish Gold from Silver.
+     * @param {string|null} version - 'Gold', 'Silver', 'Crystal', or null to clear
+     */
+    setGameVersion(version) {
+        const valid = ['Gold', 'Silver', 'Crystal', null];
+        if (!valid.includes(version)) {
+            console.warn(`[Gen2Adapter] Invalid game version: ${version}. Use 'Gold', 'Silver', 'Crystal', or null.`);
+            return;
+        }
+        this._manualGameVersion = version;
+    }
+
+    /**
+     * Get the current manual game version override.
+     * @returns {string|null}
+     */
+    getGameVersion() {
+        return this._manualGameVersion;
     }
 
     // ================================================================
@@ -81,6 +106,12 @@ export class Gen2Adapter extends BaseAdapter {
     }
 
     detectGameVersion(uint8Array, filename) {
+        // Manual override takes priority — allows users to disambiguate
+        // Gold from Silver, since they share identical save structure.
+        if (this._manualGameVersion) {
+            return this._manualGameVersion;
+        }
+
         // Use PokeList validation (PKHeX method) — the ROM header at 0x134
         // is NOT reliable for .sav files since it's part of the ROM, not SRAM.
         
@@ -97,6 +128,7 @@ export class Gen2Adapter extends BaseAdapter {
             // GS checksum 1 covers 0x2009-0x2D68, stored at 0x2D69
             if (this._validateChecksum(uint8Array, 0x2009, 0x2D68, 0x2D69)) {
                 // Can't distinguish Gold vs Silver from save data — default to Gold
+                // Users can override with setGameVersion('Silver')
                 return 'Gold';
             }
         }

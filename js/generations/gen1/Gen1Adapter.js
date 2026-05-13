@@ -24,7 +24,7 @@ import { MOVES_LIST, MOVES_PP, getMoveName } from '../../data/moves.js';
 import { getItemName } from '../../data/items.js';
 import { GEN1_BASE_STATS, GEN1_CATCH_RATES } from '../../data/baseStats.js';
 import { calculateGen1Stat, recalculateStats } from '../../engine/statCalculator.js';
-import { decodeText, encodeText } from '../../engine/textDecoder.js';
+import { Gen1TextCodec } from '../../core/textCodec/Gen1TextCodec.js';
 import { getAsciiString } from '../../engine/byteHelpers.js';
 import { getGrowthRate, getLevelFromExp, getExpAtLevel } from '../../data/experience.js';
 import { TYPE_COLORS } from '../../data/gameData.js';
@@ -37,6 +37,7 @@ export class Gen1Adapter extends BaseAdapter {
         this.parser = new Gen1Parser();
         this.writer = new Gen1Writer();
         this.validator = new Gen1Validator();
+        this._textCodec = new Gen1TextCodec('en');
     }
 
     // ================================================================
@@ -240,11 +241,13 @@ export class Gen1Adapter extends BaseAdapter {
     // ================================================================
 
     encodeText(str, maxLength, terminator = 0x50) {
-        return encodeText(str, maxLength, terminator);
+        const encoded = this._textCodec.encode(str, maxLength);
+        // BaseAdapter expects number[] — convert from Uint8Array
+        return Array.from(encoded);
     }
 
     decodeText(uint8Array, offset, maxLength) {
-        return decodeText(uint8Array, offset, maxLength);
+        return this._textCodec.decode(uint8Array, offset, maxLength);
     }
 
     // ================================================================

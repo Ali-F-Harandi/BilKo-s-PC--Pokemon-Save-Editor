@@ -23,22 +23,27 @@ export const CHAR_MAP = {
   0x7F: ' ', // Space
   0x50: '',  // Terminator
   0xE8: '.',
-  0xF2: '.', // '..'
+  0xF2: '/', // Forward slash (was incorrectly '.')
   0xE3: '-',
   0xE6: '?',
   0xE7: '!',
-  0xF3: '/',
-  0xF4: ',',
+  0xF3: '(', // Opening parenthesis (was incorrectly '/')
+  0xF4: ')', // Closing parenthesis (was incorrectly ',')
 
   // Gen 1 Specifics
   0xE1: 'Pk',
   0xE2: 'Mn',
   0x60: "'", // Bold single quote
   0xEF: '♂',
-  0xF5: '♀', // Actually female symbol in some contexts
+  0xF5: '♀', // Female symbol
   0xE0: "'",
-  0xE4: "'", // 'r
-  0xE5: "'", // 'm
+  0xE4: "'", // 'r contraction
+  0xE5: "'", // 'm contraction
+  0xE9: ',', // Comma
+  0xEA: ';', // Semicolon
+  0xEB: ':', // Colon
+  0xF0: '¥', // Yen symbol
+  0xF1: '×', // Multiplication sign
   0x52: '\n', // Line break (handled as space or ignored)
   0x54: 'POKé',
 };
@@ -53,6 +58,7 @@ export const CHAR_MAP_REV = {
   'i': 0xA8, 'j': 0xA9, 'k': 0xAA, 'l': 0xAB, 'm': 0xAC, 'n': 0xAD, 'o': 0xAE, 'p': 0xAF,
   'q': 0xB0, 'r': 0xB1, 's': 0xB2, 't': 0xB3, 'u': 0xB4, 'v': 0xB5, 'w': 0xB6, 'x': 0xB7,
   'y': 0xB8, 'z': 0xB9, ' ': 0x7F, '?': 0xE6, '!': 0xE7, '.': 0xE8, '-': 0xE3,
+  '/': 0xF2, ',': 0xE9, ';': 0xEA, ':': 0xEB, "'": 0xE0,
   '0': 0xF6, '1': 0xF7, '2': 0xF8, '3': 0xF9, '4': 0xFA, '5': 0xFB, '6': 0xFC, '7': 0xFD, '8': 0xFE, '9': 0xFF
 };
 

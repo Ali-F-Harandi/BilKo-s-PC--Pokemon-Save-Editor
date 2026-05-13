@@ -27,7 +27,8 @@ const GEN1_EN_REVERSE_MAP = {};
     // Special characters
     m[0xE1] = 'Pk'; m[0xE2] = 'Mn'; m[0xE3] = '-';
     m[0xE6] = '?'; m[0xE7] = '!'; m[0xE8] = '.'; m[0xE9] = ',';
-    m[0xEA] = ';'; m[0xEB] = ':'; m[0xE4] = '.';
+    m[0xEA] = ';'; m[0xEB] = ':'; m[0xE4] = "'"; // 'r contraction apostrophe
+    m[0xE5] = "'"; // 'm contraction apostrophe
     m[0xEF] = '\u2642'; // ♂ male symbol
     m[0xF5] = '\u2640'; // ♀ female symbol
     m[0xF0] = '\u00A5'; // ¥ yen
@@ -36,6 +37,10 @@ const GEN1_EN_REVERSE_MAP = {};
     m[0x5D] = '*'; // Trade OT marker
     // Apostrophe
     m[0xE0] = "'";
+    // Line break
+    m[0x52] = '\n';
+    // POKé
+    m[0x54] = 'POKé';
 
     // Build reverse map
     for (const [k, v] of Object.entries(m)) {
@@ -45,7 +50,9 @@ const GEN1_EN_REVERSE_MAP = {};
     r[' '] = 0x7F; r['?'] = 0xE6; r['!'] = 0xE7; r['.'] = 0xE8;
     r[','] = 0xE9; r[';'] = 0xEA; r[':'] = 0xEB; r["'"] = 0xE0;
     r['-'] = 0xE3; r['*'] = 0x5D; r['/'] = 0xF2;
-    r['('] = 0xF3; r[')'] = 0xF4;
+    // Note: '(' and ')' are already mapped to 0x9A/0x9B by the
+    // programmatic reverse map. Do NOT override to 0xF3/0xF4 here,
+    // as 0x9A/0x9B are the standard bracket positions for encoding.
     for (let i = 0; i < 10; i++) r[String.fromCharCode(48 + i)] = 0xF6 + i;
     for (let i = 0; i < 26; i++) r[String.fromCharCode(65 + i)] = 0x80 + i;
     for (let i = 0; i < 26; i++) r[String.fromCharCode(97 + i)] = lowerStart + i;

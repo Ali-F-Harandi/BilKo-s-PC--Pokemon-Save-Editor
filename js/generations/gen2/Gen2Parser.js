@@ -722,11 +722,61 @@ export class Gen2Parser {
     }
 
     _getGrowthRate(dexId) {
-        const fast = [1,2,3,4,5,6,43,44,45,60,61,62,129,152,153,154,187,188,189,233];
-        const mediumFast = [25,26,37,38,39,40,52,53,54,55,77,78,81,82,109,110,120,121,131,132,133,134,135,136,137,143,155,156,157,169,175,176,179,180,181,196,197,199,209,210,215,217,222,225,226,231,232,241,242,249,250,251];
+        // Growth rate categories for Gen 1+2 Pokemon (Dex IDs 1-251)
+        // Verified against Bulbapedia "List of Pokémon by experience type",
+        // PokeAPI pokemon-species data, and Serebii.net
+        const fast = [
+            35,36,39,40,113,                         // Gen 1: Clefairy, Jigglypuff, Chansey
+            165,166,167,168,                          // Gen 2: Ledyba, Spinarak
+            173,174,175,176,                          // Gen 2: Cleffa, Igglybuff, Togepi
+            183,184,                                  // Gen 2: Marill
+            190,200,                                  // Gen 2: Aipom, Misdreavus
+            209,210,                                  // Gen 2: Snubbull
+            222,225,235,242                           // Gen 2: Corsola, Delibird, Smeargle, Blissey
+        ];
+        const mediumFast = [
+            10,11,12,13,14,15,                        // Gen 1: Caterpie, Weedle
+            16,17,18,                                 // Gen 1: Pidgey
+            19,20,21,22,23,24,                        // Gen 1: Rattata, Spearow, Ekans
+            25,26,27,28,                              // Gen 1: Pikachu, Sandshrew
+            37,38,                                    // Gen 1: Vulpix
+            41,42,46,47,48,49,50,51,                  // Gen 1: Zubat, Paras, Venonat, Diglett
+            52,53,54,55,56,57,                        // Gen 1: Meowth, Psyduck, Mankey
+            77,78,79,80,81,82,83,84,85,86,87,88,89,  // Gen 1: Ponyta, Slowpoke, Magnemite, etc.
+            95,96,97,98,99,100,101,                   // Gen 1: Onix, Drowzee, Krabby, Voltorb
+            104,105,106,107,108,109,110,              // Gen 1: Cubone, Hitmons, Lickitung, Koffing
+            114,115,116,117,118,119,                  // Gen 1: Tangela, Kangaskhan, Horsea, Goldeen
+            122,123,124,125,126,                      // Gen 1: Mr. Mime, Scyther, Jynx, Electabuzz, Magmar
+            132,133,134,135,136,137,                  // Gen 1: Ditto, Eevee, Porygon
+            138,139,140,141,                          // Gen 1: Omanyte, Kabuto
+            161,162,163,164,                          // Gen 2: Sentret, Hoothoot
+            169,172,                                  // Gen 2: Crobat, Pichu
+            177,178,185,                              // Gen 2: Natu, Sudowoodo
+            193,194,195,196,197,                      // Gen 2: Yanma, Wooper, Espeon, Umbreon
+            199,201,202,203,204,205,206,208,          // Gen 2: Slowking, Unown, Wobbuffet, etc.
+            211,212,216,217,218,219,                  // Gen 2: Qwilfish, Scizor, Teddiursa, Slugma
+            223,224,230,231,232,233,                  // Gen 2: Remoraid, Kingdra, Phanpy, Porygon2
+            236,237,238,239,240                       // Gen 2: Tyrogue, Hitmontop, babies
+        ];
+        const slow = [
+            58,59,                                    // Gen 1: Growlithe
+            72,73,                                    // Gen 1: Tentacool
+            90,91,                                    // Gen 1: Shellder
+            102,103,                                  // Gen 1: Exeggcute
+            111,112,                                  // Gen 1: Rhyhorn
+            120,121,                                  // Gen 1: Staryu
+            127,128,129,130,131,                      // Gen 1: Pinsir, Tauros, Magikarp, Lapras
+            142,143,144,145,146,147,148,149,150,      // Gen 1: Aerodactyl, Snorlax, legends, Mewtwo
+            170,171,                                  // Gen 2: Chinchou
+            214,220,221,                              // Gen 2: Heracross, Swinub
+            226,227,228,229,                          // Gen 2: Mantine, Skarmory, Houndour
+            234,241,                                  // Gen 2: Stantler, Miltank
+            243,244,245,246,247,248,249,250           // Gen 2: Beasts, Larvitar, Lugia, Ho-Oh
+        ];
         if (fast.includes(dexId)) return 'fast';
         if (mediumFast.includes(dexId)) return 'medium-fast';
-        return 'medium-slow'; // Most Pokemon
+        if (slow.includes(dexId)) return 'slow';
+        return 'medium-slow'; // Default: starters, Nidoran, Oddish, Poliwag, Abra, Machop, etc.
     }
 
     _getExpForLevel(level, growthRate) {
