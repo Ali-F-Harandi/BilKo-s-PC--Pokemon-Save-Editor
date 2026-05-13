@@ -4,6 +4,7 @@
  * Redesigned with premium card styling: header area with game-color,
  * avatar frame, stat blocks, pokedex progress bars, badge grid.
  * Edit mode keeps exact same layout — inputs styled identically to text.
+ * Save/Cancel buttons replace Edit button in-place (same position & style).
  *
  * Uses adapter for badge definitions and trainer schema.
  * Badge count and region info come from adapter.getBadges().
@@ -12,6 +13,20 @@
 
 import { Events } from '../../state/eventBus.js';
 import { TRAINER_SPRITE, BADGE_SPRITE_BASE, gameHeaderColor } from '../editor/shared/helpers.js';
+
+// ---- Value limits per generation (prevents invalid saves) ----
+const GEN_LIMITS = {
+    1: { money: 999999, coins: 9999, id: 65535, pikachuFriendship: 255 },
+    2: { money: 999999, coins: 9999, id: 65535, friendship: 255 },
+};
+
+function _getLimits(generationId) {
+    return GEN_LIMITS[generationId] || GEN_LIMITS[1];
+}
+
+function _clamp(val, min, max) {
+    return Math.max(min, Math.min(max, val));
+}
 
 // ---- Game-specific body/background colors ----
 const GAME_BODY_BG = {
@@ -66,6 +81,7 @@ function _statIconSVG(label) {
 
 // ---- Edit Mode Stat Block ----
 // Inputs styled identically to view mode text — no layout shifts
+// Input occupies same visual space as the value text it replaces
 
 function _editStatBlock(label, inputHtml, hoverBorder) {
     return `
@@ -81,7 +97,7 @@ function _editStatBlock(label, inputHtml, hoverBorder) {
         </div>`;
 }
 
-// Edit input styled to look like view-mode value text
+// Edit input: transparent bg, thin bottom border, same font as view-mode value
 const _editInputCls = 'bg-transparent border-0 border-b-2 border-blue-300 dark:border-blue-600 text-xl font-black text-gray-900 dark:text-white tracking-tight uppercase text-right outline-none focus:border-blue-500 dark:focus:border-blue-400 w-auto max-w-[160px] p-0 m-0';
 const _editInputClsNum = _editInputCls + ' [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none';
 
@@ -110,7 +126,7 @@ function _renderTrainerDisplayFields(trainer, isYellow, data, adapter) {
 }
 
 // ---- Edit Mode Fields ----
-function _renderTrainerEditFields(form, trainer, isYellow, adapter) {
+function _renderTrainerEditFields(form, trainer, isYellow, adapter, limits) {
     let html = '';
 
     // Rival Name
@@ -118,15 +134,15 @@ function _renderTrainerEditFields(form, trainer, isYellow, adapter) {
         `<input id="edit-rival" class="${_editInputCls}" value="${form.rivalName ?? trainer.rivalName ?? ''}">`,
         'hover:border-red-300 dark:hover:border-red-700');
 
-    // Money
+    // Money (clamped to max)
     html += _editStatBlock('Money',
-        `<div class="flex items-center gap-1"><span class="text-xl font-black text-gray-900 dark:text-white tracking-tight">&yen;</span><input id="edit-money" type="number" class="${_editInputClsNum}" value="${form.money ?? trainer.money ?? 0}"></div>`,
+        `<div class="flex items-center gap-1"><span class="text-xl font-black text-gray-900 dark:text-white tracking-tight">&yen;</span><input id="edit-money" type="number" min="0" max="${limits.money}" class="${_editInputClsNum}" value="${_clamp(form.money ?? trainer.money ?? 0, 0, limits.money)}"></div>`,
         'hover:border-yellow-300 dark:hover:border-yellow-700');
 
-    // Casino Coins (Gen1)
+    // Casino Coins (Gen1, clamped to max)
     if (adapter && adapter.generationId === 1) {
         html += _editStatBlock('Casino Coins',
-            `<input id="edit-coins" type="number" class="${_editInputClsNum}" value="${form.coins ?? trainer.coins ?? 0}">`,
+            `<input id="edit-coins" type="number" min="0" max="${limits.coins}" class="${_editInputClsNum}" value="${_clamp(form.coins ?? trainer.coins ?? 0, 0, limits.coins)}">`,
             'hover:border-indigo-300 dark:hover:border-indigo-700');
     }
 
@@ -135,10 +151,10 @@ function _renderTrainerEditFields(form, trainer, isYellow, adapter) {
         `<input id="edit-playtime" class="${_editInputCls}" value="${form.playTime ?? trainer.playTime ?? '0h 00m'}">`,
         'hover:border-purple-300 dark:hover:border-purple-700');
 
-    // Pikachu Friendship (Yellow)
+    // Pikachu Friendship (Yellow, clamped 0-255)
     if (isYellow) {
         html += _editStatBlock('Pikachu Friendship',
-            `<input id="edit-pikachu" type="number" min="0" max="255" class="${_editInputClsNum}" value="${form.pikachuFriendship ?? trainer.pikachuFriendship ?? 0}">`,
+            `<input id="edit-pikachu" type="number" min="0" max="255" class="${_editInputClsNum}" value="${_clamp(form.pikachuFriendship ?? trainer.pikachuFriendship ?? 0, 0, 255)}">`,
             'hover:border-yellow-300 dark:hover:border-yellow-700');
     }
 
@@ -171,7 +187,7 @@ function _renderBadgeGroup(badgeGroup, badgeStartIndex, trainer, isEditing, form
         }
         return `
         <div class="flex justify-center">
-            <div data-badge-index="${i}" class="w-10 h-10 flex items-center justify-center transition-all duration-300 ${earned ? 'grayscale-0 opacity-100 scale-110 drop-shadow-lg' : 'grayscale opacity-30 scale-90'} cursor-pointer" title="${badge.name} (${badge.region})">
+            <div data-badge-index="${i}" class="w-10 h-10 flex items-center justify-center transition-all duration-300 ${earned ? 'grayscale-0 opacity-100 scale-110 drop-shadow-lg' : 'grayscale opacity-30 scale-90'} ${isEditing ? 'cursor-pointer' : ''}" title="${badge.name} (${badge.region})">
                 <img src="${BADGE_SPRITE_BASE}/${i + 1}.png" alt="${badge.name}" class="w-full h-full object-contain pixelated" onerror="this.src='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png'">
             </div>
         </div>`;
@@ -207,7 +223,7 @@ function _renderBadgesSection(badges, trainer, isEditing, form, adapter, hasJoht
             </div>`;
     }
 
-    // Fallback for games without region info (shouldn't happen but just in case)
+    // Fallback for games without region info
     if (!hasJohtoBadges && !hasKantoBadges && badges.length > 0) {
         html += `
             <div class="flex items-center gap-1.5 mb-3">
@@ -231,6 +247,13 @@ export function render(data, appState, theme, eventBus, localState) {
     const isGen2 = data.generationId === 2 || data.gameVersion === 'Gold' || data.gameVersion === 'Silver' || data.gameVersion === 'Crystal';
     const headerColor = gameHeaderColor(theme);
 
+    // Get adapter for badge, pokedex, and limits info
+    const adapter = appState?.getActiveAdapter?.() || null;
+    const badges = adapter ? adapter.getBadges() : [];
+    const pokedexSize = adapter ? adapter.getPokedexSize() : 151;
+    const generationId = adapter ? adapter.generationId : (data.generationId || 1);
+    const limits = _getLimits(generationId);
+
     // Use Gen2 trainer sprite for Gen2 games
     const trainerSprite = isGen2
         ? 'https://play.pokemonshowdown.com/sprites/trainers/ethan.png'
@@ -239,13 +262,7 @@ export function render(data, appState, theme, eventBus, localState) {
     // Game-specific body background
     const bodyBg = _getGameBodyBg(data.gameVersion);
 
-    // Get adapter for badge and pokedex info
-    const adapter = appState?.getActiveAdapter?.() || null;
-    const badges = adapter ? adapter.getBadges() : [];
-    const pokedexSize = adapter ? adapter.getPokedexSize() : 151;
-
     // Determine badge regions for section headers
-    // Gen2 has 16 badges: 8 Johto + 8 Kanto; Gen1 has 8 Kanto
     const johtoBadges = badges.filter(b => b.region === 'Johto');
     const kantoBadges = badges.filter(b => b.region === 'Kanto');
     const hasJohtoBadges = johtoBadges.length > 0;
@@ -267,22 +284,24 @@ export function render(data, appState, theme, eventBus, localState) {
                 <div class="absolute inset-0 opacity-15 pointer-events-none" style="background-image: radial-gradient(circle at 10px 10px, white 2px, transparent 0); background-size: 20px 20px;"></div>
 
                 <div class="w-full flex justify-between items-start relative z-10">
+                    <!-- Trainer Name with background for readability -->
                     <h2 class="text-4xl font-black text-white italic tracking-tighter drop-shadow-md uppercase">
                         ${isEditing
-                            ? `<input id="edit-name" class="bg-transparent border-0 border-b-2 border-white/40 text-4xl font-black text-white italic tracking-tighter drop-shadow-md uppercase outline-none focus:border-white/70 w-full placeholder-white/30" value="${form.name ?? trainer.name ?? ''}" placeholder="Name">`
-                            : displayName}
+                            ? `<input id="edit-name" class="bg-black/20 rounded-lg px-2 py-0.5 border-0 text-4xl font-black text-white italic tracking-tighter uppercase outline-none focus:bg-black/30 placeholder-white/40 w-full" value="${form.name ?? trainer.name ?? ''}" placeholder="Name">`
+                            : `<span class="bg-black/20 rounded-lg px-2 py-0.5">${displayName}</span>`}
                     </h2>
-                    <div class="text-right">
+                    <!-- Trainer ID with background for readability -->
+                    <div class="text-right bg-black/20 rounded-lg px-2 py-1">
                         <span class="text-[10px] font-black text-white/70 uppercase tracking-widest block">Trainer ID</span>
                         ${isEditing
-                            ? `<input id="edit-id" type="number" class="bg-transparent border-0 border-b-2 border-white/40 text-xl font-black text-white tracking-widest leading-none outline-none focus:border-white/70 w-20 text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" value="${form.id ?? trainer.id ?? 0}">`
+                            ? `<input id="edit-id" type="number" min="0" max="${limits.id}" class="bg-transparent border-0 border-b-2 border-white/40 text-xl font-black text-white tracking-widest leading-none outline-none focus:border-white/70 w-20 text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" value="${form.id ?? trainer.id ?? 0}">`
                             : `<div class="text-xl font-black text-white tracking-widest leading-none">${displayId}</div>`}
                     </div>
                 </div>
             </div>
 
-            <!-- Avatar Frame -->
-            <div class="absolute top-16 left-8 z-20">
+            <!-- Avatar Frame — moved right slightly -->
+            <div class="absolute top-16 left-14 z-20">
                 <div class="w-28 h-28 rounded-2xl bg-white dark:bg-gray-800 border-[6px] border-white dark:border-gray-700 shadow-[0_8px_20px_rgba(0,0,0,0.2)] overflow-hidden flex items-center justify-center relative transform -rotate-3">
                     <div class="absolute inset-0 bg-gray-100 dark:bg-gray-900 opacity-50"></div>
                     <img src="${trainerSprite}" alt="Trainer" class="w-full h-full object-contain p-2 pixelated scale-125 relative z-10" draggable="false" onerror="this.src='${TRAINER_SPRITE}'">
@@ -292,7 +311,7 @@ export function render(data, appState, theme, eventBus, localState) {
             <!-- Main Content Body -->
             <div class="px-5 pt-14 pb-6 space-y-3 flex-grow ${bodyBg}">
 
-                <!-- Mini Stats Grid (Time & Edit Buttons) -->
+                <!-- Mini Stats Grid (Time & Edit/Save/Cancel Buttons) -->
                 <div class="flex justify-end gap-2 mb-2">
                     <div class="flex items-center gap-1.5 px-2 py-1 bg-gray-50 dark:bg-gray-800 rounded-lg text-xs font-bold text-gray-500 uppercase border border-gray-100 dark:border-gray-700">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
@@ -303,13 +322,22 @@ export function render(data, appState, theme, eventBus, localState) {
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                             EDIT CARD
                         </button>
-                    ` : ''}
+                    ` : `
+                        <button id="trainer-save-btn" class="flex items-center gap-1.5 px-3 py-1 bg-green-50 dark:bg-green-900/20 rounded-lg text-xs font-black text-green-600 uppercase hover:bg-green-100 transition-colors border border-green-100 dark:border-green-900/30">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                            SAVE
+                        </button>
+                        <button id="trainer-cancel-btn" class="flex items-center gap-1.5 px-3 py-1 bg-red-50 dark:bg-red-900/20 rounded-lg text-xs font-black text-red-600 uppercase hover:bg-red-100 transition-colors border border-red-100 dark:border-red-900/30">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+                            CANCEL
+                        </button>
+                    `}
                 </div>
 
                 <!-- Primary Stats Blocks -->
                 <div class="space-y-2">
                     ${isEditing
-                        ? _renderTrainerEditFields(form, trainer, isYellow, adapter)
+                        ? _renderTrainerEditFields(form, trainer, isYellow, adapter, limits)
                         : _renderTrainerDisplayFields(trainer, isYellow, data, adapter)}
                 </div>
 
@@ -344,16 +372,6 @@ export function render(data, appState, theme, eventBus, localState) {
                 <!-- Badges Section -->
                 ${badges.length > 0 ? _renderBadgesSection(badges, trainer, isEditing, form, adapter, hasJohtoBadges, hasKantoBadges) : ''}
 
-                <!-- Edit/Save/Cancel Buttons -->
-                ${isEditing ? `
-                <div class="flex gap-2 pt-2">
-                    <button id="trainer-save-btn" class="flex-1 py-2.5 rounded-xl font-black text-sm text-white bg-green-600 hover:bg-green-700 transition-colors shadow-lg">
-                        Save
-                    </button>
-                    <button id="trainer-cancel-btn" class="flex-1 py-2.5 rounded-xl font-black text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors border border-gray-200 dark:border-gray-700">
-                        Cancel
-                    </button>
-                </div>` : ''}
             </div>
 
             <!-- Bottom Footer Accent -->
@@ -364,8 +382,10 @@ export function render(data, appState, theme, eventBus, localState) {
 export function bindEvents(container, eventBus, theme, appState, localState, updateFn) {
     const adapter = appState?.getActiveAdapter?.() || null;
     const badges = adapter ? adapter.getBadges() : [];
+    const generationId = adapter ? adapter.generationId : 1;
+    const limits = _getLimits(generationId);
 
-    // ---- Trainer Card ----
+    // ---- Edit Card Button ----
     const editBtn = container.querySelector('#trainer-edit-btn');
     if (editBtn) {
         editBtn.addEventListener('click', () => {
@@ -378,17 +398,21 @@ export function bindEvents(container, eventBus, theme, appState, localState, upd
                     const kantoBadges = ((trainer.badges || 0) >> 8) & 0xFF;
                     return ((kantoBadges >> (i - 8)) & 1) === 1;
                 }
-                return ((trainer.badges || 0) >> i) & 1 === 1;
+                return ((trainer.badges || 0) >> i & 1) === 1;
             });
             localState.trainerForm = { ...trainer, badges: badgesArray };
             updateFn();
         });
     }
 
+    // ---- Save Button ----
     const saveBtn = container.querySelector('#trainer-save-btn');
     if (saveBtn) {
         saveBtn.addEventListener('click', () => {
             const form = localState.trainerForm;
+            if (!form) return;
+
+            // Gather input values with clamping to valid ranges
             const nameEl = container.querySelector('#edit-name');
             const rivalEl = container.querySelector('#edit-rival');
             const idEl = container.querySelector('#edit-id');
@@ -398,38 +422,50 @@ export function bindEvents(container, eventBus, theme, appState, localState, upd
             const pikachuEl = container.querySelector('#edit-pikachu');
             const genderEl = container.querySelector('#edit-gender');
 
+            // Read badge state from DOM
             let badgesByte = 0;
             container.querySelectorAll('[data-badge-index]').forEach(btn => {
                 const idx = Number(btn.dataset.badgeIndex);
+                // Badge is earned if NOT grayscale/dimmed
                 const isEarned = !btn.classList.contains('opacity-30');
-                if (isEarned || form.badges?.[idx]) {
+                if (isEarned) {
                     badgesByte |= (1 << idx);
                 }
             });
 
+            // Validate and clamp values
             const playTimeVal = playtimeEl?.value || form.playTime;
             const ptMatch = playTimeVal?.match(/^(\d+)h\s*(\d+)m$/);
             const playTime = ptMatch ? playTimeVal : form.playTime;
 
             const updates = {
-                name: nameEl?.value || form.name,
-                rivalName: rivalEl?.value || form.rivalName,
-                id: idEl?.value ? Number(idEl.value) : form.id,
-                money: moneyEl?.value ? Number(moneyEl.value) : form.money,
+                name: (nameEl?.value || form.name || '').trim(),
+                rivalName: (rivalEl?.value || form.rivalName || '').trim(),
+                id: _clamp(idEl?.value ? Number(idEl.value) : form.id, 0, limits.id),
+                money: _clamp(moneyEl?.value ? Number(moneyEl.value) : form.money, 0, limits.money),
                 playTime: playTime,
                 badges: badgesByte,
             };
-            if (coinsEl) updates.coins = coinsEl.value ? Number(coinsEl.value) : form.coins;
-            if (pikachuEl) updates.pikachuFriendship = Number(pikachuEl.value);
+            if (coinsEl) updates.coins = _clamp(coinsEl.value ? Number(coinsEl.value) : form.coins, 0, limits.coins);
+            if (pikachuEl) updates.pikachuFriendship = _clamp(Number(pikachuEl.value), 0, 255);
             if (genderEl) updates.gender = genderEl.value;
 
+            // Apply updates through appState
             appState.handleTrainerUpdate(updates);
+
+            // Reset editing state
             localState.trainerEditing = false;
             localState.trainerForm = {};
+
+            // Emit event
             eventBus.emit(Events.TRAINER_UPDATED, updates);
+
+            // Trigger re-render
+            updateFn();
         });
     }
 
+    // ---- Cancel Button ----
     const cancelBtn = container.querySelector('#trainer-cancel-btn');
     if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
@@ -439,12 +475,14 @@ export function bindEvents(container, eventBus, theme, appState, localState, upd
         });
     }
 
-    // Badge toggles
+    // ---- Badge Toggles (only interactive in edit mode) ----
     container.querySelectorAll('[data-badge-index]').forEach(btn => {
         btn.addEventListener('click', () => {
+            // Only allow toggling in edit mode
+            if (!localState.trainerEditing) return;
+
             const idx = Number(btn.dataset.badgeIndex);
             if (!localState.trainerForm.badges) {
-                const tab = appState.getActiveTab();
                 localState.trainerForm.badges = [...(new Array(badges.length || 8)).fill(false)];
             }
             localState.trainerForm.badges[idx] = !localState.trainerForm.badges[idx];
